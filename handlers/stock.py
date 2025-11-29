@@ -32,8 +32,9 @@ async def cmd_stock(message: Message, state: FSMContext, db: Database):
     await message.answer(
         f"📝 <b>Ввод остатков на {datetime.now().strftime('%d.%m.%Y')}</b>\n\n"
         f"1/{len(products)} <b>{product['name_internal']}</b>\n"
-        f"({product['name_russian']})\n\n"
-        f"Введите вес в кг (или 0 если нет):",
+        f"({product['name_russian']})\n"
+        f"Вес упаковки: {product['package_weight']} {product['unit']}\n\n"
+        f"Введите <b>количество упаковок</b> (или 0 если нет):",
         parse_mode="HTML"
     )
 
@@ -46,21 +47,24 @@ async def process_stock_input(message: Message, state: FSMContext, db: Database)
     current_index = data['current_index']
     stock_data = data['stock_data']
 
-    # Парсим вес
+    # Парсим количество упаковок
     try:
-        weight = float(message.text.replace(',', '.'))
-        if weight < 0:
-            await message.answer("❌ Вес не может быть отрицательным. Попробуйте еще раз:")
+        quantity = float(message.text.replace(',', '.'))
+        if quantity < 0:
+            await message.answer("❌ Количество не может быть отрицательным. Попробуйте еще раз:")
             return
     except ValueError:
-        await message.answer("❌ Введите число (например: 15.5 или 0):")
+        await message.answer("❌ Введите число (например: 10 или 0):")
         return
 
-    # Сохраняем данные
+    # Рассчитываем вес
     product = products[current_index]
+    weight = quantity * product['package_weight']
+
+    # Сохраняем данные
     stock_data[product['id']] = {
         'weight': weight,
-        'quantity': weight / product['package_weight'] if product['package_weight'] > 0 else 0
+        'quantity': quantity
     }
 
     # Переходим к следующему товару
@@ -73,14 +77,16 @@ async def process_stock_input(message: Message, state: FSMContext, db: Database)
 
         await message.answer(
             f"{current_index + 1}/{len(products)} <b>{product['name_internal']}</b>\n"
-            f"({product['name_russian']})\n\n"
-            f"Введите вес в кг:",
+            f"({product['name_russian']})\n"
+            f"Вес упаковки: {product['package_weight']} {product['unit']}\n\n"
+            f"Введите <b>количество упаковок</b>:",
             parse_mode="HTML"
         )
     else:
         # Все товары введены, сохраняем в БД
         today = datetime.now().strftime('%Y-%m-%d')
         saved = 0
+        total_weight = 0
 
         for product_id, data in stock_data.items():
             try:
@@ -91,6 +97,7 @@ async def process_stock_input(message: Message, state: FSMContext, db: Database)
                     weight=data['weight']
                 )
                 saved += 1
+                total_weight += data['weight']
             except Exception as e:
                 print(f"Ошибка сохранения: {e}")
 
@@ -98,6 +105,7 @@ async def process_stock_input(message: Message, state: FSMContext, db: Database)
         await message.answer(
             f"✅ <b>Остатки сохранены!</b>\n\n"
             f"Товаров: {saved}\n"
+            f"Общий вес: {total_weight:.1f} кг\n"
             f"Дата: {today}\n\n"
             f"Используйте /order чтобы посмотреть что нужно заказать",
             parse_mode="HTML"
@@ -116,8 +124,12 @@ async def cmd_current(message: Message, db: Database):
     lines = ["📦 <b>ТЕКУЩИЕ ОСТАТКИ</b>\n"]
 
     for item in stock:
+        # Показываем и упаковки и вес
+        packages = item['quantity']
+        weight = item['weight']
         lines.append(
-            f"• {item['name_internal']}: <b>{item['weight']:.1f} кг</b>"
+            f"• {item['name_internal']}: "
+            f"<b>{packages:.0f} уп.</b> ({weight:.1f} кг)"
         )
 
     await message.answer("\n".join(lines), parse_mode="HTML")
