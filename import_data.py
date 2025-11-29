@@ -11,7 +11,8 @@ from utils.import_csv import import_products_from_csv, import_stock_from_csv
 async def main():
     """Импорт данных"""
     # Путь к CSV файлу
-    csv_path = "/Users/Dom/Downloads/WeDrink - Закупы.csv"
+    import os
+    csv_path = os.path.join(os.path.dirname(__file__), "data.csv")
 
     print("🚀 Начало импорта данных...\n")
 

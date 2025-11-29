@@ -20,6 +20,9 @@ dist/
 *.sqlite
 *.sqlite3
 
+# CSV data is committed for Railway deployment
+# data.csv is tracked
+
 # IDE
 .vscode/
 .idea/
