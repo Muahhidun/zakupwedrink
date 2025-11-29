@@ -35,8 +35,8 @@ async def main():
     await db.init_db()
 
     # Проверка и автоматический импорт данных если БД пустая
-    products = await db.get_all_products()
-    if not products:
+    products_list = await db.get_all_products()
+    if not products_list:
         logger.info("📦 БД пустая, запускаю автоматический импорт...")
         try:
             from utils.import_csv import import_products_from_csv, import_stock_from_csv
