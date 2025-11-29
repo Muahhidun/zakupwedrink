@@ -34,6 +34,37 @@ async def main():
     db = Database(DATABASE_PATH)
     await db.init_db()
 
+    # Проверка и автоматический импорт данных если БД пустая
+    products = await db.get_all_products()
+    if not products:
+        logger.info("📦 БД пустая, запускаю автоматический импорт...")
+        try:
+            from utils.import_csv import import_products_from_csv, import_stock_from_csv
+            import os
+
+            csv_path = os.path.join(os.path.dirname(__file__), "data.csv")
+
+            if os.path.exists(csv_path):
+                logger.info("📦 Импорт товаров...")
+                imported_products = await import_products_from_csv(csv_path, db)
+                logger.info(f"✅ Импортировано товаров: {imported_products}")
+
+                logger.info("📊 Импорт остатков...")
+                date_columns = {
+                    "2024-11-17": 8,
+                    "2024-11-19": 10,
+                    "2024-11-20": 12,
+                    "2024-11-22": 14,
+                    "2024-11-23": 16,
+                    "2024-11-28": 18,
+                }
+                imported_stock = await import_stock_from_csv(csv_path, db, date_columns)
+                logger.info(f"✅ Импортировано записей остатков: {imported_stock}")
+            else:
+                logger.warning(f"❌ CSV файл не найден: {csv_path}")
+        except Exception as e:
+            logger.error(f"❌ Ошибка импорта: {e}")
+
     # Инициализация бота и диспетчера
     bot = Bot(
         token=BOT_TOKEN,
