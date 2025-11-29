@@ -1,10 +1,11 @@
 """
 Обработчики для формирования заказов
 """
-from aiogram import Router
+from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.types import Message
 from database import Database
+from keyboards import get_main_menu
 from utils.calculations import (
     calculate_average_consumption,
     days_until_stockout,
@@ -35,49 +36,37 @@ async def prepare_order_data(db: Database):
     return enriched_stock
 
 
-@router.message(Command("order"))
-async def cmd_order(message: Message, db: Database):
-    """Список товаров для закупа (стандартный - на 10 дней)"""
+async def generate_order(message: Message, db: Database, days: int, threshold: int = 7):
+    """Универсальная функция генерации заказа"""
     await message.answer("⏳ Рассчитываю заказ...")
 
     stock_data = await prepare_order_data(db)
     products_to_order = get_products_to_order(
         stock_data,
-        days_threshold=7,  # Заказываем если осталось меньше недели
-        order_days=10       # Заказываем на 10 дней
+        days_threshold=threshold,
+        order_days=days
     )
 
     order_text = format_order_list(products_to_order)
-    await message.answer(order_text, parse_mode="HTML")
+    await message.answer(order_text, reply_markup=get_main_menu(), parse_mode="HTML")
+
+
+@router.message(Command("order"))
+@router.message(F.text == "10 дней")
+async def cmd_order(message: Message, db: Database):
+    """Список товаров для закупа (стандартный - на 10 дней)"""
+    await generate_order(message, db, days=10, threshold=7)
 
 
 @router.message(Command("order14"))
+@router.message(F.text == "14 дней")
 async def cmd_order14(message: Message, db: Database):
     """Заказ на 14 дней"""
-    await message.answer("⏳ Рассчитываю заказ на 14 дней...")
-
-    stock_data = await prepare_order_data(db)
-    products_to_order = get_products_to_order(
-        stock_data,
-        days_threshold=7,
-        order_days=14
-    )
-
-    order_text = format_order_list(products_to_order)
-    await message.answer(order_text, parse_mode="HTML")
+    await generate_order(message, db, days=14, threshold=7)
 
 
 @router.message(Command("order7"))
+@router.message(F.text == "7 дней")
 async def cmd_order7(message: Message, db: Database):
     """Заказ на 7 дней"""
-    await message.answer("⏳ Рассчитываю заказ на 7 дней...")
-
-    stock_data = await prepare_order_data(db)
-    products_to_order = get_products_to_order(
-        stock_data,
-        days_threshold=5,
-        order_days=7
-    )
-
-    order_text = format_order_list(products_to_order)
-    await message.answer(order_text, parse_mode="HTML")
+    await generate_order(message, db, days=7, threshold=5)

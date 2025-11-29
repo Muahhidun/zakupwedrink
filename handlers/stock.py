@@ -8,6 +8,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from datetime import datetime
 from database import Database
+from keyboards import get_main_menu
 
 router = Router()
 
@@ -16,8 +17,7 @@ class StockInput(StatesGroup):
     entering_stock = State()
 
 
-@router.message(Command("stock"))
-async def cmd_stock(message: Message, state: FSMContext, db: Database):
+async def start_stock_input(message: Message, state: FSMContext, db: Database):
     """Начать ввод остатков"""
     products = await db.get_all_products()
 
@@ -107,7 +107,8 @@ async def process_stock_input(message: Message, state: FSMContext, db: Database)
             f"Товаров: {saved}\n"
             f"Общий вес: {total_weight:.1f} кг\n"
             f"Дата: {today}\n\n"
-            f"Используйте /order чтобы посмотреть что нужно заказать",
+            f"Нажмите 🛒 Список закупа чтобы посмотреть что нужно заказать",
+            reply_markup=get_main_menu(),
             parse_mode="HTML"
         )
 
@@ -132,4 +133,19 @@ async def cmd_current(message: Message, db: Database):
             f"<b>{packages:.0f} уп.</b> ({weight:.1f} кг)"
         )
 
-    await message.answer("\n".join(lines), parse_mode="HTML")
+    await message.answer("\n".join(lines), reply_markup=get_main_menu(), parse_mode="HTML")
+
+
+# Обработчики команд и кнопок
+@router.message(Command("stock"))
+@router.message(F.text == "📝 Ввод остатков")
+async def cmd_stock(message: Message, state: FSMContext, db: Database):
+    """Команда и кнопка для ввода остатков"""
+    await start_stock_input(message, state, db)
+
+
+@router.message(Command("current"))
+@router.message(F.text == "📦 Текущие остатки")
+async def cmd_current_handler(message: Message, db: Database):
+    """Команда и кнопка для текущих остатков"""
+    await cmd_current(message, db)
