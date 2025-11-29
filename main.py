@@ -11,7 +11,7 @@ from aiogram.enums import ParseMode
 from dotenv import load_dotenv
 
 from database import Database
-from handlers import start, stock, orders, reports
+from handlers import start, stock, orders, reports, supply, products
 
 # Загрузка переменных окружения
 load_dotenv()
@@ -50,8 +50,10 @@ async def main():
     # Регистрация роутеров
     dp.include_router(start.router)
     dp.include_router(stock.router)
+    dp.include_router(supply.router)
     dp.include_router(orders.router)
     dp.include_router(reports.router)
+    dp.include_router(products.router)
 
     logger.info("🤖 Бот запущен!")
 

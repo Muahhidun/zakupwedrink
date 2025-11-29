@@ -13,11 +13,14 @@ def get_main_menu() -> ReplyKeyboardMarkup:
                 KeyboardButton(text="📦 Текущие остатки"),
             ],
             [
+                KeyboardButton(text="📦 Добавить поставку"),
                 KeyboardButton(text="🛒 Список закупа"),
-                KeyboardButton(text="💰 Отчеты"),
             ],
             [
+                KeyboardButton(text="💰 Отчеты"),
                 KeyboardButton(text="📊 Аналитика"),
+            ],
+            [
                 KeyboardButton(text="ℹ️ Помощь"),
             ],
         ],
