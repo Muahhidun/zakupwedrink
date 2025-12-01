@@ -17,6 +17,7 @@ router = Router()
 class StockInput(StatesGroup):
     entering_stock = State()
     entering_bulk_stock = State()
+    confirming_bulk_stock = State()
 
 
 async def format_stock_report(db: Database, stock_data: dict) -> str:
@@ -68,9 +69,13 @@ async def format_stock_report(db: Database, stock_data: dict) -> str:
         lines.extend(yellow_items)
         lines.append("")
 
-    if green_items and len(green_items) <= 10:  # показываем только если товаров немного
-        lines.append("<b>✅ НОРМАЛЬНЫЙ ЗАПАС:</b>")
-        lines.extend(green_items)
+    # Зеленые товары не показываем - лишний шум
+    # if green_items and len(green_items) <= 10:
+    #     lines.append("<b>✅ НОРМАЛЬНЫЙ ЗАПАС:</b>")
+    #     lines.extend(green_items)
+
+    if not red_items and not orange_items and not yellow_items:
+        lines.append("<b>✅ Все товары в нормальном запасе!</b>")
 
     return "\n".join(lines)
 
@@ -279,42 +284,91 @@ async def process_bulk_stock_input(message: Message, state: FSMContext, db: Data
         weight = quantity * product['package_weight']
         stock_data[product['id']] = {
             'weight': weight,
-            'quantity': quantity
+            'quantity': quantity,
+            'name': product['name_russian'],
+            'name_internal': product['name_internal']
         }
 
-    # Сохраняем в БД
-    today = datetime.now().strftime('%Y-%m-%d')
-    saved = 0
+    # Показываем подтверждение с предпросмотром
+    confirmation_lines = ["📋 <b>Проверьте данные перед сохранением:</b>\n"]
     total_weight = 0
 
-    for product_id, data_item in stock_data.items():
-        try:
-            await db.add_stock(
-                product_id=product_id,
-                date=today,
-                quantity=data_item['quantity'],
-                weight=data_item['weight']
+    for i, (product_id, data) in enumerate(stock_data.items(), 1):
+        if data['quantity'] > 0:  # Показываем только ненулевые
+            confirmation_lines.append(
+                f"{i}. {data['name_russian']}: "
+                f"<b>{data['quantity']:.0f} уп.</b> ({data['weight']:.1f} кг)"
             )
-            saved += 1
-            total_weight += data_item['weight']
-        except Exception as e:
-            print(f"Ошибка сохранения: {e}")
+            total_weight += data['weight']
 
-    # Формируем мини-отчет
-    report = await format_stock_report(db, stock_data)
+    confirmation_lines.append(f"\n<b>Общий вес: {total_weight:.1f} кг</b>")
+    confirmation_lines.append("\n✅ Все верно? Напишите <b>ДА</b> для сохранения")
+    confirmation_lines.append("❌ Или <b>НЕТ</b> для отмены")
 
-    await state.clear()
-    await message.answer(
-        f"✅ <b>Остатки сохранены!</b>\n\n"
-        f"Товаров: {saved}\n"
-        f"Общий вес: {total_weight:.1f} кг\n"
-        f"Дата: {today}",
-        reply_markup=get_main_menu(),
-        parse_mode="HTML"
-    )
+    # Сохраняем данные в state для последующего сохранения
+    await state.update_data(stock_data=stock_data)
+    await state.set_state(StockInput.confirming_bulk_stock)
 
-    # Отправляем мини-отчет отдельным сообщением
-    await message.answer(report, reply_markup=get_main_menu(), parse_mode="HTML")
+    await message.answer("\n".join(confirmation_lines), parse_mode="HTML")
+
+
+@router.message(StockInput.confirming_bulk_stock)
+async def confirm_bulk_stock_input(message: Message, state: FSMContext, db: Database):
+    """Подтверждение сохранения массового ввода"""
+    user_answer = message.text.strip().upper()
+
+    if user_answer in ["ДА", "YES", "Y", "Д", "+"]:
+        # Получаем данные из state
+        data = await state.get_data()
+        stock_data = data.get('stock_data', {})
+
+        # Сохраняем в БД
+        today = datetime.now().strftime('%Y-%m-%d')
+        saved = 0
+        total_weight = 0
+
+        for product_id, data_item in stock_data.items():
+            try:
+                await db.add_stock(
+                    product_id=product_id,
+                    date=today,
+                    quantity=data_item['quantity'],
+                    weight=data_item['weight']
+                )
+                saved += 1
+                total_weight += data_item['weight']
+            except Exception as e:
+                print(f"Ошибка сохранения: {e}")
+
+        # Формируем мини-отчет
+        report = await format_stock_report(db, stock_data)
+
+        await state.clear()
+        await message.answer(
+            f"✅ <b>Остатки сохранены!</b>\n\n"
+            f"Товаров: {saved}\n"
+            f"Общий вес: {total_weight:.1f} кг\n"
+            f"Дата: {today}",
+            reply_markup=get_main_menu(),
+            parse_mode="HTML"
+        )
+
+        # Отправляем мини-отчет отдельным сообщением
+        await message.answer(report, reply_markup=get_main_menu(), parse_mode="HTML")
+
+    elif user_answer in ["НЕТ", "NO", "N", "Н", "-"]:
+        await state.clear()
+        await message.answer(
+            "❌ Ввод остатков отменен.\n\n"
+            "Нажмите 📝 Ввод остатков чтобы начать заново.",
+            reply_markup=get_main_menu()
+        )
+    else:
+        await message.answer(
+            "❓ Не понял ответ.\n\n"
+            "Напишите <b>ДА</b> для сохранения или <b>НЕТ</b> для отмены.",
+            parse_mode="HTML"
+        )
 
 
 @router.message(Command("current"))
