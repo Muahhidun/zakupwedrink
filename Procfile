@@ -1,2 +1,2 @@
-release: python import_data.py
-worker: python main.py
+release: python direct_import_to_pg.py && python import_historical_data.py
+worker: ./start.sh

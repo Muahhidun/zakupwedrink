@@ -1,0 +1,133 @@
+"""
+Веб-сервер для Telegram Mini App
+"""
+from aiohttp import web
+import aiohttp_cors
+import os
+import sys
+from datetime import datetime
+from pathlib import Path
+
+# Добавляем путь к родительской директории
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from database_pg import DatabasePG
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# Инициализация базы данных
+DATABASE_URL = os.getenv('DATABASE_URL')
+db = None
+
+
+async def init_db(app):
+    """Инициализация БД при старте приложения"""
+    global db
+    db = DatabasePG(DATABASE_URL)
+    await db.init_db()
+    print("✅ База данных инициализирована")
+
+
+async def close_db(app):
+    """Закрытие БД при остановке"""
+    global db
+    if db:
+        await db.close()
+
+
+async def index(request):
+    """Главная страница Mini App"""
+    html_path = Path(__file__).parent / 'templates' / 'stock_input.html'
+    with open(html_path, 'r', encoding='utf-8') as f:
+        html_content = f.read()
+    return web.Response(text=html_content, content_type='text/html')
+
+
+async def get_products(request):
+    """API: Получить список всех товаров"""
+    try:
+        products = await db.get_all_products()
+        return web.json_response(products)
+    except Exception as e:
+        print(f"Ошибка получения товаров: {e}")
+        return web.json_response({'error': str(e)}, status=500)
+
+
+async def save_stock(request):
+    """API: Сохранить остатки"""
+    try:
+        data = await request.json()
+        date_str = data.get('date')
+        stock_items = data.get('stock', [])
+        user_id = data.get('user_id')
+
+        # Преобразуем строку даты в datetime.date
+        date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
+
+        # Сохраняем каждый остаток
+        for item in stock_items:
+            await db.add_stock(
+                product_id=item['product_id'],
+                date=date_obj,
+                quantity=item['quantity'],
+                weight=item['weight']
+            )
+
+        print(f"✅ Сохранено {len(stock_items)} позиций (пользователь {user_id})")
+
+        return web.json_response({
+            'success': True,
+            'message': f'Сохранено {len(stock_items)} позиций'
+        })
+
+    except Exception as e:
+        print(f"Ошибка сохранения: {e}")
+        return web.json_response({'error': str(e)}, status=500)
+
+
+async def get_latest_stock(request):
+    """API: Получить последние остатки"""
+    try:
+        stock = await db.get_latest_stock()
+        return web.json_response(stock)
+    except Exception as e:
+        print(f"Ошибка получения остатков: {e}")
+        return web.json_response({'error': str(e)}, status=500)
+
+
+def create_app():
+    """Создать приложение aiohttp"""
+    app = web.Application()
+
+    # Настройка CORS
+    cors = aiohttp_cors.setup(app, defaults={
+        "*": aiohttp_cors.ResourceOptions(
+            allow_credentials=True,
+            expose_headers="*",
+            allow_headers="*",
+        )
+    })
+
+    # Роуты
+    app.router.add_get('/', index)
+    app.router.add_get('/api/products', get_products)
+    app.router.add_post('/api/stock', save_stock)
+    app.router.add_get('/api/stock/latest', get_latest_stock)
+
+    # Применяем CORS ко всем роутам
+    for route in list(app.router.routes()):
+        cors.add(route)
+
+    # Хуки жизненного цикла
+    app.on_startup.append(init_db)
+    app.on_cleanup.append(close_db)
+
+    return app
+
+
+if __name__ == '__main__':
+    port = int(os.getenv('PORT', 5000))
+    app = create_app()
+    print(f"🚀 Запуск веб-сервера на порту {port}")
+    web.run_app(app, host='0.0.0.0', port=port)

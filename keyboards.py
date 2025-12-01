@@ -1,15 +1,24 @@
 """
 Клавиатуры для бота
 """
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, WebAppInfo
+import os
 
 
 def get_main_menu() -> ReplyKeyboardMarkup:
     """Главное меню бота"""
+    web_app_url = os.getenv('WEB_APP_URL', 'http://localhost:5000')
+
     keyboard = ReplyKeyboardMarkup(
         keyboard=[
             [
-                KeyboardButton(text="📝 Ввод остатков"),
+                KeyboardButton(
+                    text="📝 Ввод остатков (форма)",
+                    web_app=WebAppInfo(url=web_app_url)
+                ),
+            ],
+            [
+                KeyboardButton(text="📝 Ввод остатков (чат)"),
                 KeyboardButton(text="📦 Текущие остатки"),
             ],
             [

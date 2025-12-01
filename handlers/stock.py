@@ -204,10 +204,69 @@ async def cmd_current(message: Message, db: Database):
 
 # Обработчики команд и кнопок
 @router.message(Command("stock"))
-@router.message(F.text == "📝 Ввод остатков")
+@router.message(F.text == "📝 Ввод остатков (чат)")
 async def cmd_stock(message: Message, state: FSMContext, db: Database):
-    """Команда и кнопка для ввода остатков"""
+    """Команда и кнопка для ввода остатков через чат"""
     await start_stock_input(message, state, db)
+
+
+@router.message(F.web_app_data)
+async def handle_web_app_data(message: Message, db: Database):
+    """Обработчик данных из Mini App"""
+    try:
+        import json
+        # Получаем данные из web_app
+        data = json.loads(message.web_app_data.data)
+
+        date_str = data.get('date')
+        stock_items = data.get('stock', [])
+
+        # Преобразуем строку даты в datetime.date
+        from datetime import datetime
+        date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
+
+        # Сохраняем каждый остаток
+        saved = 0
+        total_weight = 0
+
+        for item in stock_items:
+            await db.add_stock(
+                product_id=item['product_id'],
+                date=date_obj,
+                quantity=item['quantity'],
+                weight=item['weight']
+            )
+            saved += 1
+            total_weight += item['weight']
+
+        # Формируем stock_data для отчета
+        stock_data = {}
+        for item in stock_items:
+            stock_data[item['product_id']] = {
+                'quantity': item['quantity'],
+                'weight': item['weight']
+            }
+
+        # Формируем мини-отчет
+        report = await format_stock_report(db, stock_data)
+
+        await message.answer(
+            f"✅ <b>Остатки сохранены через форму!</b>\n\n"
+            f"Товаров: {saved}\n"
+            f"Общий вес: {total_weight:.1f} кг\n"
+            f"Дата: {date_str}",
+            parse_mode="HTML"
+        )
+
+        # Отправляем мини-отчет
+        await message.answer(report, parse_mode="HTML")
+
+    except Exception as e:
+        print(f"Ошибка обработки данных Mini App: {e}")
+        await message.answer(
+            "❌ Ошибка при сохранении данных. Попробуйте еще раз.",
+            parse_mode="HTML"
+        )
 
 
 @router.message(Command("current"))
