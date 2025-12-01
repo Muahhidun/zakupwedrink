@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 
 from database import Database
 from handlers import start, stock, orders, reports, supply, products
+from scheduler import setup_scheduler
 
 # Загрузка переменных окружения
 load_dotenv()
@@ -86,12 +87,17 @@ async def main():
     dp.include_router(reports.router)
     dp.include_router(products.router)
 
+    # Настройка и запуск планировщика задач
+    scheduler = setup_scheduler(bot)
+    scheduler.start()
+
     logger.info("🤖 Бот запущен!")
 
     # Запуск polling
     try:
         await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
     finally:
+        scheduler.shutdown()
         await bot.session.close()
 
 
