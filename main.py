@@ -10,7 +10,8 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from dotenv import load_dotenv
 
-from database import Database
+from database import Database as SQLiteDB
+from database_pg import DatabasePG
 from handlers import start, stock, orders, reports, supply, products
 from scheduler import setup_scheduler
 
@@ -26,13 +27,20 @@ logger = logging.getLogger(__name__)
 
 # Конфигурация
 BOT_TOKEN = os.getenv('BOT_TOKEN')
-DATABASE_PATH = os.getenv('DATABASE_PATH', 'wedrink.db')
+DATABASE_URL = os.getenv('DATABASE_URL')  # PostgreSQL URL (на Railway)
+DATABASE_PATH = os.getenv('DATABASE_PATH', 'wedrink.db')  # SQLite (локально)
 
 
 async def main():
     """Основная функция запуска бота"""
-    # Инициализация базы данных
-    db = Database(DATABASE_PATH)
+    # Инициализация базы данных (автовыбор: PostgreSQL на Railway, SQLite локально)
+    if DATABASE_URL:
+        logger.info("🐘 Используется PostgreSQL")
+        db = DatabasePG(DATABASE_URL)
+    else:
+        logger.info("📁 Используется SQLite")
+        db = SQLiteDB(DATABASE_PATH)
+
     await db.init_db()
 
     # Проверка и автоматический импорт данных если БД пустая
@@ -98,6 +106,8 @@ async def main():
         await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
     finally:
         scheduler.shutdown()
+        if hasattr(db, 'close'):
+            await db.close()
         await bot.session.close()
 
 
