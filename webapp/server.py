@@ -48,6 +48,12 @@ async def get_products(request):
     """API: Получить список всех товаров"""
     try:
         products = await db.get_all_products()
+
+        # Конвертируем datetime в строки для JSON
+        for product in products:
+            if 'created_at' in product and product['created_at']:
+                product['created_at'] = product['created_at'].isoformat()
+
         return web.json_response(products)
     except Exception as e:
         print(f"Ошибка получения товаров: {e}")
@@ -90,6 +96,14 @@ async def get_latest_stock(request):
     """API: Получить последние остатки"""
     try:
         stock = await db.get_latest_stock()
+
+        # Конвертируем datetime и date в строки для JSON
+        for item in stock:
+            if 'created_at' in item and item['created_at']:
+                item['created_at'] = item['created_at'].isoformat()
+            if 'date' in item and item['date']:
+                item['date'] = item['date'].isoformat()
+
         return web.json_response(stock)
     except Exception as e:
         print(f"Ошибка получения остатков: {e}")
