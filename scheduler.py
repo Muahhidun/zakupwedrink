@@ -36,7 +36,7 @@ def setup_scheduler(bot: Bot) -> AsyncIOScheduler:
     """
     Настроить и запустить планировщик задач
     """
-    scheduler = AsyncIOScheduler(timezone="Asia/Almaty")  # Казахстан UTC+6
+    scheduler = AsyncIOScheduler(timezone="Asia/Almaty")  # Казахстан UTC+5
 
     # Получаем ID чата из переменных окружения
     reminder_chat_id = os.getenv('REMINDER_CHAT_ID')
@@ -47,15 +47,16 @@ def setup_scheduler(bot: Bot) -> AsyncIOScheduler:
         return scheduler
 
     # Добавляем задачу: каждый день в 11:00 по времени Алматы
+    # ВАЖНО: явно указываем timezone в CronTrigger!
     scheduler.add_job(
         send_daily_reminder,
-        trigger=CronTrigger(hour=11, minute=0),
+        trigger=CronTrigger(hour=11, minute=0, timezone="Asia/Almaty"),
         args=[bot, reminder_chat_id],
         id='daily_stock_reminder',
         name='Ежедневное напоминание об остатках',
         replace_existing=True
     )
 
-    logger.info(f"📅 Планировщик настроен: напоминания в 11:00 в чат {reminder_chat_id}")
+    logger.info(f"📅 Планировщик настроен: напоминания в 11:00 по Астане в чат {reminder_chat_id}")
 
     return scheduler
