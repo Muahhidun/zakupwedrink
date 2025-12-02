@@ -166,8 +166,8 @@
                 const row = document.createElement('div');
                 row.className = 'stock-row';
 
-                // Округляем вес для нормального отображения
-                const weight = parseFloat(product.package_weight).toFixed(product.package_weight < 1 ? 2 : 1);
+                // Всегда 2 знака после запятой (0.85, 2.60)
+                const weight = parseFloat(product.package_weight).toFixed(2);
 
                 row.innerHTML = `
                     <div class="product-info">
