@@ -29,13 +29,10 @@ def start_web_server():
     print(f"📱 Starting web server on port {os.getenv('PORT')}...")
 
     try:
-        # Запускаем веб-сервер
+        # Запускаем веб-сервер БЕЗ захвата вывода - пусть пишет в stdout напрямую
         proc = subprocess.Popen(
             [sys.executable, 'webapp/server.py'],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            universal_newlines=True,
-            bufsize=1
+            # Не захватываем stdout/stderr - пусть веб-сервер пишет напрямую
         )
 
         # Даем время на старт
@@ -43,11 +40,8 @@ def start_web_server():
 
         # Проверяем, что процесс жив
         if proc.poll() is not None:
-            # Процесс завершился - показываем ошибку
-            print("❌ Web server failed to start!")
-            output = proc.stdout.read()
-            print("Error output:")
-            print(output)
+            # Процесс завершился с ошибкой
+            print(f"❌ Web server failed to start! Exit code: {proc.poll()}")
             sys.exit(1)
 
         print(f"✅ Web server started (PID: {proc.pid})")
