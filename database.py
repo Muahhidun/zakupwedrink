@@ -184,3 +184,26 @@ class Database:
             """, (start_date, end_date)) as cursor:
                 rows = await cursor.fetchall()
                 return [dict(row) for row in rows]
+
+    async def get_stock_dates_summary(self) -> List[Dict]:
+        """Получить сводку по датам с остатками"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute("""
+                SELECT
+                    date,
+                    COUNT(*) as product_count,
+                    SUM(weight) as total_weight
+                FROM stock
+                GROUP BY date
+                ORDER BY date DESC
+            """) as cursor:
+                rows = await cursor.fetchall()
+                return [dict(row) for row in rows]
+
+    async def get_total_stock_records(self) -> int:
+        """Получить общее количество записей об остатках"""
+        async with aiosqlite.connect(self.db_path) as db:
+            async with db.execute("SELECT COUNT(*) FROM stock") as cursor:
+                row = await cursor.fetchone()
+                return row[0] if row else 0
