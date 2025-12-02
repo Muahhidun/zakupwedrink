@@ -20,15 +20,16 @@ if [ -z "$PORT" ]; then
 fi
 
 echo "📱 Starting web server on port $PORT..."
-python3 webapp/server.py 2>&1 | sed 's/^/[WEB] /' &
+python3 webapp/server.py &
 WEB_PID=$!
 
 # Даем веб-серверу время на старт
-sleep 5
+sleep 3
 
 # Проверяем, что веб-сервер запустился
-if ! kill -0 $WEB_PID 2>/dev/null; then
+if ! ps -p $WEB_PID > /dev/null 2>&1; then
     echo "❌ Web server failed to start! Check logs above."
+    wait $WEB_PID
     exit 1
 fi
 
@@ -36,4 +37,4 @@ echo "✅ Web server started (PID: $WEB_PID)"
 echo "🤖 Starting Telegram bot..."
 
 # Запускаем бота (он будет держать процесс alive)
-python3 main.py 2>&1 | sed 's/^/[BOT] /'
+exec python3 main.py
