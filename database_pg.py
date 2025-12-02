@@ -157,6 +157,11 @@ class DatabasePG:
 
     async def calculate_consumption(self, start_date: str, end_date: str) -> List[Dict]:
         """Расчет расхода между двумя датами"""
+        # Конвертируем строки в date объекты для PostgreSQL
+        from datetime import datetime
+        start_date_obj = datetime.strptime(start_date, '%Y-%m-%d').date()
+        end_date_obj = datetime.strptime(end_date, '%Y-%m-%d').date()
+
         async with self.pool.acquire() as conn:
             rows = await conn.fetch("""
                 SELECT
@@ -174,7 +179,7 @@ class DatabasePG:
                 LEFT JOIN stock s2 ON p.id = s2.product_id AND s2.date = $2
                 WHERE s1.weight IS NOT NULL AND s2.weight IS NOT NULL
                 ORDER BY cost DESC
-            """, start_date, end_date)
+            """, start_date_obj, end_date_obj)
             return [dict(row) for row in rows]
 
     async def get_stock_dates_summary(self) -> List[Dict]:
