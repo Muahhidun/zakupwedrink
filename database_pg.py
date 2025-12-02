@@ -144,6 +144,14 @@ class DatabasePG:
             """)
             return [dict(row) for row in rows]
 
+    async def has_stock_for_date(self, date) -> bool:
+        """Проверить наличие остатков за конкретную дату"""
+        async with self.pool.acquire() as conn:
+            count = await conn.fetchval("""
+                SELECT COUNT(*) FROM stock WHERE date = $1
+            """, date)
+            return count > 0
+
     async def get_stock_history(self, product_id: int, days: int = 7) -> List[Dict]:
         """Получить историю остатков товара за последние N дней"""
         async with self.pool.acquire() as conn:

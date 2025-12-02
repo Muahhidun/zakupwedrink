@@ -34,6 +34,44 @@
             font-size: 14px;
         }
 
+        /* Уведомление о существующих данных */
+        .existing-data-alert {
+            background-color: #fff3cd;
+            border: 1px solid #ffc107;
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .existing-data-alert.show {
+            display: block;
+        }
+
+        .alert-title {
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #856404;
+        }
+
+        .alert-message {
+            font-size: 14px;
+            color: #856404;
+            margin-bottom: 12px;
+        }
+
+        .edit-button {
+            width: 100%;
+            padding: 10px;
+            background-color: #ffc107;
+            color: #000;
+            border: none;
+            border-radius: 6px;
+            font-size: 15px;
+            font-weight: 500;
+            cursor: pointer;
+        }
+
         .stock-table {
             width: 100%;
         }
@@ -82,77 +120,138 @@
             bottom: 0;
             left: 0;
             right: 0;
-            padding: 12px;
+            padding: 16px;
             background-color: var(--tg-theme-bg-color, #ffffff);
             border-top: 1px solid var(--tg-theme-section-separator-color, #e8e8e8);
         }
 
-        .btn-save {
+        .save-button button {
             width: 100%;
             padding: 14px;
+            background-color: var(--tg-theme-button-color, #3390ec);
+            color: var(--tg-theme-button-text-color, #ffffff);
+            border: none;
+            border-radius: 8px;
             font-size: 16px;
             font-weight: 600;
-            color: #ffffff;
-            background-color: var(--tg-theme-button-color, #3390ec);
-            border: none;
-            border-radius: 10px;
             cursor: pointer;
         }
 
-        .btn-save:active {
-            opacity: 0.8;
+        .save-button button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
         }
 
-        .loading {
+        .instruction {
             text-align: center;
-            padding: 40px;
             color: var(--tg-theme-hint-color, #999);
+            margin-bottom: 16px;
+            font-size: 14px;
+            font-style: italic;
         }
     </style>
 </head>
 <body>
-    <div id="loading" class="loading">Загрузка...</div>
+    <h1>Ввод остатков</h1>
+    <div class="date-info" id="dateInfo">Дата: <span id="currentDate"></span></div>
+    <div class="instruction">Укажите количество упаковок</div>
 
-    <div id="app" style="display: none;">
-        <h1>Ввод остатков</h1>
-        <div class="date-info" id="dateInfo"></div>
-        <div class="date-info" style="margin-top: 8px; margin-bottom: 16px;">
-            Укажите <strong>количество упаковок</strong>
+    <!-- Уведомление о существующих данных -->
+    <div class="existing-data-alert" id="existingDataAlert">
+        <div class="alert-title">⚠️ Остатки уже внесены</div>
+        <div class="alert-message">
+            Остатки за сегодняшний рабочий день уже были внесены.<br>
+            Вы можете исправить данные, если заметили ошибку.
         </div>
+        <button class="edit-button" onclick="loadExistingData()">
+            ✏️ Исправить ошибку
+        </button>
+    </div>
 
-        <div class="stock-table" id="stockTable"></div>
+    <div class="stock-table" id="stockTable"></div>
 
-        <div class="save-button">
-            <button class="btn-save" onclick="saveStock()">Сохранить</button>
-        </div>
+    <div class="save-button">
+        <button onclick="saveStock()" id="saveBtn">Сохранить</button>
     </div>
 
     <script>
         const tg = window.Telegram.WebApp;
         tg.expand();
-        tg.enableClosingConfirmation();
 
         let products = [];
-        const today = new Date().toLocaleDateString('ru-RU', {
-            day: '2-digit',
-            month: '2-digit',
-            year: 'numeric'
-        });
+        let editMode = false;
+        let workingDate = '';
 
-        // Загрузка товаров
+        // API базовый URL
+        const API_URL = window.location.origin;
+
+        // Форматирование даты
+        function formatDate(dateStr) {
+            const date = new Date(dateStr);
+            return date.toLocaleDateString('ru-RU', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric'
+            });
+        }
+
+        // Проверка наличия данных
+        async function checkExistingData() {
+            try {
+                const response = await fetch(`${API_URL}/api/stock/check`);
+                const data = await response.json();
+
+                workingDate = data.working_date;
+                document.getElementById('currentDate').textContent = formatDate(workingDate);
+
+                if (data.exists) {
+                    document.getElementById('existingDataAlert').classList.add('show');
+                    editMode = false;
+                }
+            } catch (error) {
+                console.error('Ошибка проверки данных:', error);
+            }
+        }
+
+        // Загрузка существующих данных для редактирования
+        async function loadExistingData() {
+            try {
+                const response = await fetch(`${API_URL}/api/stock/${workingDate}`);
+                const existingStock = await response.json();
+
+                // Создаём мапу product_id -> quantity
+                const stockMap = {};
+                existingStock.forEach(item => {
+                    stockMap[item.product_id] = item.quantity;
+                });
+
+                // Заполняем форму
+                products.forEach(product => {
+                    const input = document.getElementById(`qty-${product.id}`);
+                    if (input && stockMap[product.id] !== undefined) {
+                        input.value = stockMap[product.id];
+                    }
+                });
+
+                // Скрываем алерт, включаем режим редактирования
+                document.getElementById('existingDataAlert').classList.remove('show');
+                editMode = true;
+
+                tg.showAlert('Данные загружены. Внесите изменения и сохраните.');
+            } catch (error) {
+                console.error('Ошибка загрузки данных:', error);
+                tg.showAlert('Ошибка загрузки данных');
+            }
+        }
+
+        // Загрузка списка товаров
         async function loadProducts() {
             try {
-                const response = await fetch('/api/products');
+                const response = await fetch(`${API_URL}/api/products`);
                 products = await response.json();
-
-                document.getElementById('loading').style.display = 'none';
-                document.getElementById('app').style.display = 'block';
-
-                document.getElementById('dateInfo').textContent = `Дата: ${today}`;
-
                 renderProducts();
             } catch (error) {
-                console.error('Ошибка загрузки:', error);
+                console.error('Ошибка загрузки товаров:', error);
                 tg.showAlert('Ошибка загрузки данных');
             }
         }
@@ -166,7 +265,6 @@
                 const row = document.createElement('div');
                 row.className = 'stock-row';
 
-                // Всегда 2 знака после запятой (0.85, 2.60)
                 const weight = parseFloat(product.package_weight).toFixed(2);
 
                 row.innerHTML = `
@@ -191,35 +289,74 @@
             });
         }
 
-        // Сохранение данных
-        function saveStock() {
-            const stockData = products.map(product => ({
-                product_id: product.id,
-                quantity: parseFloat(document.getElementById(`qty-${product.id}`).value) || 0,
-                weight: (parseFloat(document.getElementById(`qty-${product.id}`).value) || 0) * product.package_weight
-            })).filter(item => item.quantity > 0);
+        // Сохранение остатков
+        async function saveStock() {
+            const saveBtn = document.getElementById('saveBtn');
+            saveBtn.disabled = true;
+            saveBtn.textContent = 'Сохранение...';
 
-            if (stockData.length === 0) {
-                tg.showAlert('Введите хотя бы одно значение');
-                return;
+            try {
+                const stockData = [];
+
+                products.forEach(product => {
+                    const input = document.getElementById(`qty-${product.id}`);
+                    const quantity = parseFloat(input.value) || 0;
+
+                    if (quantity > 0) {
+                        const weight = quantity * product.package_weight;
+                        stockData.push({
+                            product_id: product.id,
+                            quantity: quantity,
+                            weight: weight
+                        });
+                    }
+                });
+
+                if (stockData.length === 0) {
+                    tg.showAlert('Введите хотя бы один товар');
+                    saveBtn.disabled = false;
+                    saveBtn.textContent = 'Сохранить';
+                    return;
+                }
+
+                const response = await fetch(`${API_URL}/api/stock`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        date: workingDate,
+                        stock: stockData,
+                        user_id: tg.initDataUnsafe?.user?.id || 'unknown'
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    tg.showAlert(result.message, () => {
+                        tg.close();
+                    });
+                } else {
+                    tg.showAlert('Ошибка сохранения: ' + (result.error || 'Неизвестная ошибка'));
+                    saveBtn.disabled = false;
+                    saveBtn.textContent = 'Сохранить';
+                }
+            } catch (error) {
+                console.error('Ошибка:', error);
+                tg.showAlert('Ошибка сохранения данных');
+                saveBtn.disabled = false;
+                saveBtn.textContent = 'Сохранить';
             }
-
-            // Отправляем данные обратно в бот
-            const dataToSend = JSON.stringify({
-                date: new Date().toISOString().split('T')[0],
-                stock: stockData
-            });
-
-            tg.sendData(dataToSend);
         }
 
         // Инициализация
-        loadProducts();
+        async function init() {
+            await checkExistingData();
+            await loadProducts();
+        }
 
-        // Настройка главной кнопки Telegram
-        tg.MainButton.setText('Сохранить');
-        tg.MainButton.onClick(saveStock);
-        tg.MainButton.show();
+        init();
     </script>
 </body>
 </html>

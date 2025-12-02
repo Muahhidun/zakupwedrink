@@ -13,6 +13,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from database_pg import DatabasePG
 from dotenv import load_dotenv
+from utils.working_day import get_working_date
 
 load_dotenv()
 
@@ -64,14 +65,16 @@ async def save_stock(request):
     """API: Сохранить остатки"""
     try:
         data = await request.json()
-        date_str = data.get('date')
         stock_items = data.get('stock', [])
         user_id = data.get('user_id')
 
-        # Преобразуем строку даты в datetime.date
-        date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
+        # Определяем рабочий день (игнорируем переданную дату от клиента)
+        working_date_str = get_working_date()
+        date_obj = datetime.strptime(working_date_str, '%Y-%m-%d').date()
 
-        # Сохраняем каждый остаток
+        print(f"📅 Сохранение остатков на рабочий день: {working_date_str}")
+
+        # Сохраняем каждый остаток (ON CONFLICT DO UPDATE автоматически обновит если уже есть)
         for item in stock_items:
             await db.add_stock(
                 product_id=item['product_id'],
@@ -84,7 +87,8 @@ async def save_stock(request):
 
         return web.json_response({
             'success': True,
-            'message': f'Сохранено {len(stock_items)} позиций'
+            'message': f'Сохранено {len(stock_items)} позиций',
+            'working_date': working_date_str
         })
 
     except Exception as e:
@@ -96,6 +100,46 @@ async def get_latest_stock(request):
     """API: Получить последние остатки"""
     try:
         stock = await db.get_latest_stock()
+
+        # Конвертируем datetime и date в строки для JSON
+        for item in stock:
+            if 'created_at' in item and item['created_at']:
+                item['created_at'] = item['created_at'].isoformat()
+            if 'date' in item and item['date']:
+                item['date'] = item['date'].isoformat()
+
+        return web.json_response(stock)
+    except Exception as e:
+        print(f"Ошибка получения остатков: {e}")
+        return web.json_response({'error': str(e)}, status=500)
+
+
+async def check_stock_exists(request):
+    """API: Проверить наличие остатков за текущий рабочий день"""
+    try:
+        # Определяем текущий рабочий день
+        working_date_str = get_working_date()
+        date_obj = datetime.strptime(working_date_str, '%Y-%m-%d').date()
+
+        # Проверяем наличие данных
+        exists = await db.has_stock_for_date(date_obj)
+
+        return web.json_response({
+            'exists': exists,
+            'working_date': working_date_str
+        })
+    except Exception as e:
+        print(f"Ошибка проверки остатков: {e}")
+        return web.json_response({'error': str(e)}, status=500)
+
+
+async def get_stock_for_date(request):
+    """API: Получить остатки за конкретную дату"""
+    try:
+        date_str = request.match_info.get('date')
+        date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
+
+        stock = await db.get_stock_by_date(date_obj)
 
         # Конвертируем datetime и date в строки для JSON
         for item in stock:
@@ -128,6 +172,8 @@ def create_app():
     app.router.add_get('/api/products', get_products)
     app.router.add_post('/api/stock', save_stock)
     app.router.add_get('/api/stock/latest', get_latest_stock)
+    app.router.add_get('/api/stock/check', check_stock_exists)
+    app.router.add_get('/api/stock/{date}', get_stock_for_date)
 
     # Применяем CORS ко всем роутам
     for route in list(app.router.routes()):
