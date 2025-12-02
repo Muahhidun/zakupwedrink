@@ -274,3 +274,38 @@ async def handle_web_app_data(message: Message, db: Database):
 async def cmd_current_handler(message: Message, db: Database):
     """Команда и кнопка для текущих остатков"""
     await cmd_current(message, db)
+
+
+@router.message(Command("verify_data"))
+async def cmd_verify_data(message: Message, db: Database):
+    """Проверка исторических данных в базе"""
+    try:
+        # Получаем общую статистику
+        total_products = len(await db.get_all_products())
+        total_records = await db.get_total_stock_records()
+        dates_summary = await db.get_stock_dates_summary()
+
+        lines = ["📊 <b>ПРОВЕРКА ИСТОРИЧЕСКИХ ДАННЫХ</b>\n"]
+        lines.append(f"📦 Всего товаров в БД: <b>{total_products}</b>")
+        lines.append(f"📝 Всего записей об остатках: <b>{total_records}</b>\n")
+
+        if dates_summary:
+            lines.append("<b>📅 Данные по датам:</b>")
+            for row in dates_summary:
+                date_str = row['date'].strftime('%d.%m.%Y')
+                count = row['product_count']
+                total_weight = row['total_weight']
+                lines.append(
+                    f"• {date_str}: <b>{count}</b> товаров "
+                    f"({total_weight:.1f} кг)"
+                )
+        else:
+            lines.append("❌ Нет данных об остатках")
+
+        await message.answer("\n".join(lines), parse_mode="HTML")
+
+    except Exception as e:
+        await message.answer(
+            f"❌ Ошибка при проверке данных: {e}",
+            parse_mode="HTML"
+        )

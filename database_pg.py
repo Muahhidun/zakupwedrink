@@ -176,3 +176,22 @@ class DatabasePG:
                 ORDER BY cost DESC
             """, start_date, end_date)
             return [dict(row) for row in rows]
+
+    async def get_stock_dates_summary(self) -> List[Dict]:
+        """Получить сводку по датам с остатками"""
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch("""
+                SELECT
+                    date,
+                    COUNT(*) as product_count,
+                    SUM(weight) as total_weight
+                FROM stock
+                GROUP BY date
+                ORDER BY date DESC
+            """)
+            return [dict(row) for row in rows]
+
+    async def get_total_stock_records(self) -> int:
+        """Получить общее количество записей об остатках"""
+        async with self.pool.acquire() as conn:
+            return await conn.fetchval("SELECT COUNT(*) FROM stock")
