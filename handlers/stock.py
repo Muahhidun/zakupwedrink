@@ -317,6 +317,58 @@ async def cmd_current_handler(message: Message, db: Database):
     await cmd_current(message, db)
 
 
+@router.message(Command("test_report"))
+async def cmd_test_report(message: Message, db: Database):
+    """Протестировать отчёт по остаткам на последних данных"""
+    try:
+        is_private = message.chat.type == 'private'
+
+        await message.answer("🧪 Тестирование отчёта по остаткам...", parse_mode="HTML")
+
+        # Получаем последние остатки
+        stock = await db.get_latest_stock()
+
+        if not stock:
+            await message.answer("❌ Нет данных об остатках для тестирования")
+            return
+
+        # Формируем stock_data в том же формате, что и при вводе
+        stock_data = {}
+        for item in stock:
+            stock_data[item['product_id']] = {
+                'quantity': item['quantity'],
+                'weight': item['weight']
+            }
+
+        print(f"🧪 Тестирование отчёта для {len(stock_data)} товаров...")
+
+        # Генерируем отчёт
+        report = await format_stock_report(db, stock_data)
+
+        print(f"✅ Отчёт сформирован, длина: {len(report)} символов")
+
+        if report and len(report) > 50:
+            await message.answer(report, reply_markup=get_main_menu(is_private), parse_mode="HTML")
+            print("✅ Тестовый отчёт отправлен")
+        else:
+            print(f"⚠️ Отчёт пустой или слишком короткий: {report}")
+            await message.answer(
+                "⚠️ Недостаточно данных для анализа остатков.\n"
+                "Нужна история за несколько дней для расчёта среднего расхода.",
+                reply_markup=get_main_menu(is_private),
+                parse_mode="HTML"
+            )
+
+    except Exception as e:
+        print(f"❌ Ошибка тестирования отчёта: {e}")
+        import traceback
+        traceback.print_exc()
+        await message.answer(
+            f"❌ Ошибка тестирования: {e}",
+            parse_mode="HTML"
+        )
+
+
 @router.message(Command("verify_data"))
 async def cmd_verify_data(message: Message, db: Database):
     """Проверка исторических данных в базе"""
