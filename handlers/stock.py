@@ -22,48 +22,58 @@ async def format_stock_report(db: Database, stock_data: dict) -> str:
     """Форматировать мини-отчет по складу с цветовой индикацией"""
     lines = ["📊 <b>ОТЧЕТ ПО СКЛАДУ</b>\n"]
 
-    red_items = []      # нет в наличии
-    orange_items = []   # до 3 дней
-    yellow_items = []   # 4-7 дней
-    green_items = []    # больше 7 дней
+    red_items = []      # 0-2 дня
+    orange_items = []   # 3-6 дней
+    yellow_items = []   # 7-10 дней
+    green_items = []    # больше 10 дней
 
     for product_id, data in stock_data.items():
-        # Получаем историю для расчета среднего расхода
-        history = await db.get_stock_history(product_id, days=7)
-        avg_consumption = calculate_average_consumption(history)
+        try:
+            # Получаем историю для расчета среднего расхода
+            history = await db.get_stock_history(product_id, days=7)
+            avg_consumption = calculate_average_consumption(history)
 
-        # Получаем информацию о продукте
-        products = await db.get_all_products()
-        product = next((p for p in products if p['id'] == product_id), None)
-        if not product:
+            # Получаем информацию о продукте
+            products = await db.get_all_products()
+            product = next((p for p in products if p['id'] == product_id), None)
+            if not product:
+                continue
+
+            current_stock = data['weight']
+            days_left = days_until_stockout(current_stock, avg_consumption)
+
+            # Для товаров в штуках не показываем вес
+            unit = product.get('unit', 'кг')
+            if unit == 'шт':
+                item_text = f"• {product['name_russian']}: <b>{data['quantity']:.0f} уп.</b>"
+            else:
+                item_text = f"• {product['name_russian']}: <b>{data['quantity']:.0f} уп.</b> ({current_stock:.1f} кг)"
+
+            # Новые пороги: красный 0-2, оранжевый 3-6, жёлтый 7-10
+            if days_left <= 2:
+                red_items.append(f"🔴 {item_text} - <b>на {days_left} дн.</b>")
+            elif days_left <= 6:
+                orange_items.append(f"🟠 {item_text} - <b>на {days_left} дн.</b>")
+            elif days_left <= 10:
+                yellow_items.append(f"🟡 {item_text} - <b>на {days_left} дн.</b>")
+            else:
+                green_items.append(f"🟢 {item_text} - на {days_left} дн.")
+        except Exception as e:
+            print(f"Ошибка анализа товара {product_id}: {e}")
             continue
 
-        current_stock = data['weight']
-        days_left = days_until_stockout(current_stock, avg_consumption)
-
-        item_text = f"• {product['name_russian']}: <b>{data['quantity']:.0f} уп.</b> ({current_stock:.1f} кг)"
-
-        if current_stock <= 0:
-            red_items.append(f"🔴 {item_text} - <b>НЕТ В НАЛИЧИИ</b>")
-        elif days_left <= 3:
-            orange_items.append(f"🟠 {item_text} - <b>на {days_left} дн.</b>")
-        elif days_left <= 7:
-            yellow_items.append(f"🟡 {item_text} - <b>на {days_left} дн.</b>")
-        else:
-            green_items.append(f"🟢 {item_text} - на {days_left} дн.")
-
     if red_items:
-        lines.append("<b>❗️ СРОЧНО - НЕТ В НАЛИЧИИ:</b>")
+        lines.append("<b>❗️ КРИТИЧЕСКИЙ ЗАПАС (0-2 дня):</b>")
         lines.extend(red_items)
         lines.append("")
 
     if orange_items:
-        lines.append("<b>⚠️ КРИТИЧЕСКИЙ ЗАПАС (до 3 дней):</b>")
+        lines.append("<b>⚠️ НИЗКИЙ ЗАПАС (3-6 дней):</b>")
         lines.extend(orange_items)
         lines.append("")
 
     if yellow_items:
-        lines.append("<b>📌 НИЗКИЙ ЗАПАС (4-7 дней):</b>")
+        lines.append("<b>📌 СРЕДНИЙ ЗАПАС (7-10 дней):</b>")
         lines.extend(yellow_items)
         lines.append("")
 
@@ -162,21 +172,39 @@ async def process_stock_input(message: Message, state: FSMContext, db: Database)
             except Exception as e:
                 print(f"Ошибка сохранения: {e}")
 
-        # Формируем мини-отчет
-        report = await format_stock_report(db, stock_data)
-
         await state.clear()
+        is_private = message.chat.type == 'private'
+
         await message.answer(
             f"✅ <b>Остатки сохранены!</b>\n\n"
             f"Товаров: {saved}\n"
             f"Общий вес: {total_weight:.1f} кг\n"
             f"Дата: {today}",
-            reply_markup=get_main_menu(),
+            reply_markup=get_main_menu(is_private),
             parse_mode="HTML"
         )
 
-        # Отправляем мини-отчет отдельным сообщением
-        await message.answer(report, reply_markup=get_main_menu(), parse_mode="HTML")
+        # Формируем и отправляем мини-отчет отдельным сообщением
+        try:
+            print(f"📊 Формирование отчёта для {len(stock_data)} товаров...")
+            report = await format_stock_report(db, stock_data)
+            print(f"✅ Отчёт сформирован, длина: {len(report)} символов")
+
+            if report and len(report) > 50:  # Проверяем что отчёт не пустой
+                await message.answer(report, reply_markup=get_main_menu(is_private), parse_mode="HTML")
+                print("✅ Отчёт отправлен")
+            else:
+                print(f"⚠️ Отчёт пустой или слишком короткий: {report}")
+                await message.answer(
+                    "⚠️ Недостаточно данных для анализа остатков.\n"
+                    "Нужна история за несколько дней для расчёта среднего расхода.",
+                    parse_mode="HTML"
+                )
+        except Exception as e:
+            print(f"❌ Ошибка формирования отчёта: {e}")
+            import traceback
+            traceback.print_exc()
+            # Не блокируем работу если отчёт не сформировался
 
 
 @router.message(Command("current"))
