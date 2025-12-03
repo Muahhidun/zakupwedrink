@@ -12,7 +12,10 @@ router = Router()
 @router.message(Command("start"))
 async def cmd_start(message: Message):
     """Приветствие и главное меню"""
-    welcome_text = """
+    is_private = message.chat.type == 'private'
+
+    if is_private:
+        welcome_text = """
 👋 <b>Привет! Я бот для учета закупок WeDrink</b>
 
 Используйте кнопки меню ниже для работы:
@@ -23,8 +26,21 @@ async def cmd_start(message: Message):
 💰 <b>Отчеты</b> - расходы в тенге
 📊 <b>Аналитика</b> - топ товаров
     """
+    else:
+        welcome_text = """
+👋 <b>WeDrink закуп бот запущен в группе!</b>
 
-    await message.answer(welcome_text, reply_markup=get_main_menu(), parse_mode="HTML")
+📝 Доступны команды:
+• Ввод остатков (через чат)
+• Текущие остатки
+• Отчеты и аналитика
+• Список закупа
+
+💡 <b>Важно:</b> Форма ввода остатков (Mini App) работает только в личных сообщениях.
+Для использования формы напишите боту в личку: @WeDrink_zakup_bot
+    """
+
+    await message.answer(welcome_text, reply_markup=get_main_menu(is_private), parse_mode="HTML")
 
 
 # Обработчики кнопок главного меню
@@ -56,12 +72,15 @@ async def btn_help_menu(message: Message):
 @router.message(F.text == "⬅️ Назад")
 async def btn_back(message: Message):
     """Вернуться в главное меню"""
-    await message.answer("Главное меню:", reply_markup=get_main_menu())
+    is_private = message.chat.type == 'private'
+    await message.answer("Главное меню:", reply_markup=get_main_menu(is_private))
 
 
 @router.message(Command("help"))
 async def cmd_help(message: Message):
     """Подробная справка"""
+    is_private = message.chat.type == 'private'
+
     help_text = """
 📖 <b>ПОДРОБНАЯ СПРАВКА</b>
 
@@ -88,7 +107,10 @@ async def cmd_help(message: Message):
 💡 <b>Совет:</b> Используйте кнопки меню для быстрого доступа!
     """
 
-    await message.answer(help_text, reply_markup=get_main_menu(), parse_mode="HTML")
+    if not is_private:
+        help_text += "\n\n⚠️ <b>Работа в группе:</b> Форма ввода остатков (Mini App) доступна только в личных сообщениях с ботом."
+
+    await message.answer(help_text, reply_markup=get_main_menu(is_private), parse_mode="HTML")
 
 
 @router.message(Command("chatid"))
