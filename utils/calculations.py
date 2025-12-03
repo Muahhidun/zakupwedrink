@@ -5,26 +5,79 @@ from typing import List, Dict, Tuple
 from datetime import datetime, timedelta
 
 
-def calculate_average_consumption(history: List[Dict]) -> float:
+def calculate_average_consumption(history: List[Dict], supplies: List[Dict] = None) -> Tuple[float, int, str]:
     """
-    Рассчитать средний расход за период
-    history: список остатков, отсортированных по дате (от новых к старым)
+    Рассчитать средний расход за период с учетом поставок
+
+    Args:
+        history: список остатков, отсортированных по дате (от новых к старым)
+        supplies: список поставок за тот же период (опционально)
+
+    Returns:
+        (средний расход в день, количество дней с данными, предупреждение)
     """
     if len(history) < 2:
-        return 0.0
+        return 0.0, 0, "Недостаточно данных (менее 2 дней)"
+
+    if supplies is None:
+        supplies = []
 
     total_consumed = 0.0
-    days = 0
+    total_days = 0
+    valid_periods = 0
 
-    for i in range(len(history) - 1):
-        current = history[i]['weight']
-        previous = history[i + 1]['weight']
-        consumed = previous - current  # предыдущий был больше
-        if consumed > 0:  # учитываем только расход, не поставки
-            total_consumed += consumed
-            days += 1
+    # Сортируем по дате (от старых к новым) для правильного расчета
+    history_sorted = sorted(history, key=lambda x: x['date'])
 
-    return total_consumed / days if days > 0 else 0.0
+    for i in range(len(history_sorted) - 1):
+        current = history_sorted[i]
+        next_record = history_sorted[i + 1]
+
+        current_stock = current['weight']
+        next_stock = next_record['weight']
+        current_date = current['date']
+        next_date = next_record['date']
+
+        # Пропускаем если один из остатков = 0
+        if current_stock == 0 or next_stock == 0:
+            continue
+
+        # Находим поставки между этими датами
+        supply_weight = 0.0
+        for supply in supplies:
+            supply_date = supply['date']
+            # Поставка учитывается если её дата >= current_date и < next_date
+            # Так как поставка приходит ПОСЛЕ подсчета остатков того же дня
+            if current_date <= supply_date < next_date:
+                supply_weight += supply['weight']
+
+        # Расход = текущий остаток + поставки - следующий остаток
+        consumption = current_stock + supply_weight - next_stock
+
+        # Пропускаем если расход отрицательный (ошибка данных)
+        if consumption < 0:
+            continue
+
+        # Считаем реальное количество дней
+        days_diff = (next_date - current_date).days
+        if days_diff <= 0:
+            continue
+
+        total_consumed += consumption
+        total_days += days_diff
+        valid_periods += 1
+
+    if total_days == 0:
+        return 0.0, 0, "Нет валидных периодов для расчета"
+
+    avg_consumption = total_consumed / total_days
+
+    # Предупреждение если мало данных
+    warning = ""
+    if valid_periods < 3:
+        warning = "(мало данных, риск неправильного расчета)"
+
+    return avg_consumption, total_days, warning
 
 
 def days_until_stockout(current_stock: float, avg_daily_consumption: float) -> int:

@@ -22,15 +22,17 @@ async def prepare_order_data(db: Database):
     enriched_stock = []
 
     for item in stock:
-        # Получаем историю остатков за последние 7 дней
-        history = await db.get_stock_history(item['product_id'], days=7)
+        # Получаем историю остатков за последние 14 дней
+        history = await db.get_stock_history(item['product_id'], days=14)
+        supplies = await db.get_supply_history(item['product_id'], days=14)
 
-        # Рассчитываем средний расход
-        avg_consumption = calculate_average_consumption(history)
+        # Рассчитываем средний расход с учетом поставок
+        avg_consumption, days_with_data, warning = calculate_average_consumption(history, supplies)
 
         enriched_stock.append({
             **item,
-            'avg_daily_consumption': avg_consumption
+            'avg_daily_consumption': avg_consumption,
+            'consumption_warning': warning
         })
 
     return enriched_stock

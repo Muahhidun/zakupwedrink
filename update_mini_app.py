@@ -1,0 +1,377 @@
+#!/usr/bin/env python3
+"""
+Обновить Mini App для поддержки редактирования остатков
+"""
+
+html_content = '''<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Ввод остатков</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: var(--tg-theme-bg-color, #ffffff);
+            color: var(--tg-theme-text-color, #000000);
+            padding: 12px;
+            padding-bottom: 80px;
+        }
+
+        h1 {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 16px;
+            text-align: center;
+        }
+
+        .date-info {
+            text-align: center;
+            color: var(--tg-theme-hint-color, #999);
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+
+        /* Уведомление о существующих данных */
+        .existing-data-alert {
+            background-color: #fff3cd;
+            border: 1px solid #ffc107;
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .existing-data-alert.show {
+            display: block;
+        }
+
+        .alert-title {
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #856404;
+        }
+
+        .alert-message {
+            font-size: 14px;
+            color: #856404;
+            margin-bottom: 12px;
+        }
+
+        .edit-button {
+            width: 100%;
+            padding: 10px;
+            background-color: #ffc107;
+            color: #000;
+            border: none;
+            border-radius: 6px;
+            font-size: 15px;
+            font-weight: 500;
+            cursor: pointer;
+        }
+
+        .stock-table {
+            width: 100%;
+        }
+
+        .stock-row {
+            display: flex;
+            align-items: center;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--tg-theme-section-separator-color, #e8e8e8);
+        }
+
+        .product-info {
+            flex: 1;
+            padding-right: 12px;
+        }
+
+        .product-name {
+            font-size: 15px;
+            font-weight: 500;
+            margin-bottom: 4px;
+        }
+
+        .product-details {
+            font-size: 13px;
+            color: var(--tg-theme-hint-color, #999);
+        }
+
+        .quantity-input {
+            width: 80px;
+            padding: 8px 12px;
+            font-size: 16px;
+            border: 1px solid var(--tg-theme-section-separator-color, #e8e8e8);
+            border-radius: 8px;
+            background-color: var(--tg-theme-secondary-bg-color, #f5f5f5);
+            color: var(--tg-theme-text-color, #000);
+            text-align: center;
+        }
+
+        .quantity-input:focus {
+            outline: none;
+            border-color: var(--tg-theme-button-color, #3390ec);
+        }
+
+        .save-button {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            padding: 16px;
+            background-color: var(--tg-theme-bg-color, #ffffff);
+            border-top: 1px solid var(--tg-theme-section-separator-color, #e8e8e8);
+        }
+
+        .save-button button {
+            width: 100%;
+            padding: 14px;
+            background-color: var(--tg-theme-button-color, #3390ec);
+            color: var(--tg-theme-button-text-color, #ffffff);
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .save-button button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .instruction {
+            text-align: center;
+            color: var(--tg-theme-hint-color, #999);
+            margin-bottom: 16px;
+            font-size: 14px;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <h1>Ввод остатков</h1>
+    <div class="date-info" id="dateInfo">Дата: <span id="currentDate"></span></div>
+    <div class="instruction">Укажите количество упаковок</div>
+
+    <!-- Уведомление о существующих данных -->
+    <div class="existing-data-alert" id="existingDataAlert">
+        <div class="alert-title">⚠️ Остатки уже внесены</div>
+        <div class="alert-message">
+            Остатки за сегодняшний рабочий день уже были внесены.<br>
+            Вы можете исправить данные, если заметили ошибку.
+        </div>
+        <button class="edit-button" onclick="loadExistingData()">
+            ✏️ Исправить ошибку
+        </button>
+    </div>
+
+    <div class="stock-table" id="stockTable"></div>
+
+    <div class="save-button">
+        <button onclick="saveStock()" id="saveBtn">Сохранить</button>
+    </div>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.expand();
+
+        let products = [];
+        let editMode = false;
+        let workingDate = '';
+
+        // API базовый URL
+        const API_URL = window.location.origin;
+
+        // Форматирование даты
+        function formatDate(dateStr) {
+            const date = new Date(dateStr);
+            return date.toLocaleDateString('ru-RU', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric'
+            });
+        }
+
+        // Проверка наличия данных
+        async function checkExistingData() {
+            try {
+                const response = await fetch(`${API_URL}/api/stock/check`);
+                const data = await response.json();
+
+                workingDate = data.working_date;
+                document.getElementById('currentDate').textContent = formatDate(workingDate);
+
+                if (data.exists) {
+                    document.getElementById('existingDataAlert').classList.add('show');
+                    editMode = false;
+                }
+            } catch (error) {
+                console.error('Ошибка проверки данных:', error);
+            }
+        }
+
+        // Загрузка существующих данных для редактирования
+        async function loadExistingData() {
+            try {
+                const response = await fetch(`${API_URL}/api/stock/${workingDate}`);
+                const existingStock = await response.json();
+
+                // Создаём мапу product_id -> quantity
+                const stockMap = {};
+                existingStock.forEach(item => {
+                    stockMap[item.product_id] = item.quantity;
+                });
+
+                // Заполняем форму
+                products.forEach(product => {
+                    const input = document.getElementById(`qty-${product.id}`);
+                    if (input && stockMap[product.id] !== undefined) {
+                        input.value = stockMap[product.id];
+                    }
+                });
+
+                // Скрываем алерт, включаем режим редактирования
+                document.getElementById('existingDataAlert').classList.remove('show');
+                editMode = true;
+
+                tg.showAlert('Данные загружены. Внесите изменения и сохраните.');
+            } catch (error) {
+                console.error('Ошибка загрузки данных:', error);
+                tg.showAlert('Ошибка загрузки данных');
+            }
+        }
+
+        // Загрузка списка товаров
+        async function loadProducts() {
+            try {
+                const response = await fetch(`${API_URL}/api/products`);
+                products = await response.json();
+                renderProducts();
+            } catch (error) {
+                console.error('Ошибка загрузки товаров:', error);
+                tg.showAlert('Ошибка загрузки данных');
+            }
+        }
+
+        // Отрисовка таблицы
+        function renderProducts() {
+            const table = document.getElementById('stockTable');
+            table.innerHTML = '';
+
+            products.forEach((product, index) => {
+                const row = document.createElement('div');
+                row.className = 'stock-row';
+
+                const weight = parseFloat(product.package_weight).toFixed(2);
+
+                row.innerHTML = `
+                    <div class="product-info">
+                        <div class="product-name">${product.name_internal}</div>
+                        <div class="product-details">
+                            ${weight} ${product.unit} × ${product.units_per_box} уп.
+                        </div>
+                    </div>
+                    <input
+                        type="number"
+                        class="quantity-input"
+                        id="qty-${product.id}"
+                        min="0"
+                        step="0.5"
+                        value="0"
+                        inputmode="decimal"
+                        placeholder="уп."
+                    >
+                `;
+                table.appendChild(row);
+            });
+        }
+
+        // Сохранение остатков
+        async function saveStock() {
+            const saveBtn = document.getElementById('saveBtn');
+            saveBtn.disabled = true;
+            saveBtn.textContent = 'Сохранение...';
+
+            try {
+                const stockData = [];
+
+                products.forEach(product => {
+                    const input = document.getElementById(`qty-${product.id}`);
+                    const quantity = parseFloat(input.value) || 0;
+
+                    if (quantity > 0) {
+                        const weight = quantity * product.package_weight;
+                        stockData.push({
+                            product_id: product.id,
+                            quantity: quantity,
+                            weight: weight
+                        });
+                    }
+                });
+
+                if (stockData.length === 0) {
+                    tg.showAlert('Введите хотя бы один товар');
+                    saveBtn.disabled = false;
+                    saveBtn.textContent = 'Сохранить';
+                    return;
+                }
+
+                const response = await fetch(`${API_URL}/api/stock`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        date: workingDate,
+                        stock: stockData,
+                        user_id: tg.initDataUnsafe?.user?.id || 'unknown'
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    tg.showAlert(result.message, () => {
+                        tg.close();
+                    });
+                } else {
+                    tg.showAlert('Ошибка сохранения: ' + (result.error || 'Неизвестная ошибка'));
+                    saveBtn.disabled = false;
+                    saveBtn.textContent = 'Сохранить';
+                }
+            } catch (error) {
+                console.error('Ошибка:', error);
+                tg.showAlert('Ошибка сохранения данных');
+                saveBtn.disabled = false;
+                saveBtn.textContent = 'Сохранить';
+            }
+        }
+
+        // Инициализация
+        async function init() {
+            await checkExistingData();
+            await loadProducts();
+        }
+
+        init();
+    </script>
+</body>
+</html>
+'''
+
+# Записываем обновлённый HTML
+with open('/Users/Dom/zakupwedrink/webapp/templates/stock_input.html', 'w', encoding='utf-8') as f:
+    f.write(html_content)
+
+print("✅ Mini App обновлён!")
+print("   - Добавлена проверка существующих данных")
+print("   - Добавлено уведомление и кнопка редактирования")
+print("   - Добавлена логика загрузки данных для правки")

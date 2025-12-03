@@ -306,3 +306,14 @@ class DatabasePG:
         """Получить общее количество записей об остатках"""
         async with self.pool.acquire() as conn:
             return await conn.fetchval("SELECT COUNT(*) FROM stock")
+
+    async def get_supply_history(self, product_id: int, days: int = 14) -> List[Dict]:
+        """Получить историю поставок товара за последние N дней"""
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch("""
+                SELECT * FROM supplies
+                WHERE product_id = $1
+                  AND date >= CURRENT_DATE - INTERVAL '%s days'
+                ORDER BY date DESC
+            """ % days, product_id)
+            return [dict(row) for row in rows]

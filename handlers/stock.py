@@ -29,9 +29,12 @@ async def format_stock_report(db: Database, stock_data: dict) -> str:
 
     for product_id, data in stock_data.items():
         try:
-            # Получаем историю для расчета среднего расхода
-            history = await db.get_stock_history(product_id, days=7)
-            avg_consumption = calculate_average_consumption(history)
+            # Получаем историю для расчета среднего расхода (14 дней)
+            history = await db.get_stock_history(product_id, days=14)
+            supplies = await db.get_supply_history(product_id, days=14)
+
+            # Рассчитываем средний расход с учетом поставок
+            avg_consumption, days_with_data, warning = calculate_average_consumption(history, supplies)
 
             # Получаем информацию о продукте
             products = await db.get_all_products()
@@ -49,15 +52,20 @@ async def format_stock_report(db: Database, stock_data: dict) -> str:
             else:
                 item_text = f"• {product['name_russian']}: <b>{data['quantity']:.0f} уп.</b> ({current_stock:.1f} кг)"
 
+            # Добавляем предупреждение если мало данных
+            days_text = f"на {days_left} дн."
+            if warning:
+                days_text += f" {warning}"
+
             # Новые пороги: красный 0-2, оранжевый 3-6, жёлтый 7-10
             if days_left <= 2:
-                red_items.append(f"🔴 {item_text} - <b>на {days_left} дн.</b>")
+                red_items.append(f"🔴 {item_text} - <b>{days_text}</b>")
             elif days_left <= 6:
-                orange_items.append(f"🟠 {item_text} - <b>на {days_left} дн.</b>")
+                orange_items.append(f"🟠 {item_text} - <b>{days_text}</b>")
             elif days_left <= 10:
-                yellow_items.append(f"🟡 {item_text} - <b>на {days_left} дн.</b>")
+                yellow_items.append(f"🟡 {item_text} - <b>{days_text}</b>")
             else:
-                green_items.append(f"🟢 {item_text} - на {days_left} дн.")
+                green_items.append(f"🟢 {item_text} - {days_text}")
         except Exception as e:
             print(f"Ошибка анализа товара {product_id}: {e}")
             continue
