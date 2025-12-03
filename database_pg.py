@@ -97,8 +97,13 @@ class DatabasePG:
             )
             return dict(row) if row else None
 
-    async def add_stock(self, product_id: int, date: str, quantity: float, weight: float):
-        """Добавить/обновить остаток на дату"""
+    async def add_stock(self, product_id: int, date, quantity: float, weight: float):
+        """Добавить/обновить остаток на дату (date может быть str или date)"""
+        # Конвертируем строку в date объект если нужно
+        if isinstance(date, str):
+            from datetime import datetime
+            date = datetime.strptime(date, '%Y-%m-%d').date()
+
         async with self.pool.acquire() as conn:
             await conn.execute("""
                 INSERT INTO stock (product_id, date, quantity, weight)
@@ -107,17 +112,27 @@ class DatabasePG:
                 DO UPDATE SET quantity=EXCLUDED.quantity, weight=EXCLUDED.weight
             """, product_id, date, quantity, weight)
 
-    async def add_supply(self, product_id: int, date: str, boxes: int,
+    async def add_supply(self, product_id: int, date, boxes: int,
                         weight: float, cost: float):
-        """Добавить поставку"""
+        """Добавить поставку (date может быть str или date)"""
+        # Конвертируем строку в date объект если нужно
+        if isinstance(date, str):
+            from datetime import datetime
+            date = datetime.strptime(date, '%Y-%m-%d').date()
+
         async with self.pool.acquire() as conn:
             await conn.execute("""
                 INSERT INTO supplies (product_id, date, boxes, weight, cost)
                 VALUES ($1, $2, $3, $4, $5)
             """, product_id, date, boxes, weight, cost)
 
-    async def get_stock_by_date(self, date: str) -> List[Dict]:
-        """Получить остатки на дату"""
+    async def get_stock_by_date(self, date) -> List[Dict]:
+        """Получить остатки на дату (date может быть str или date)"""
+        # Конвертируем строку в date объект если нужно
+        if isinstance(date, str):
+            from datetime import datetime
+            date = datetime.strptime(date, '%Y-%m-%d').date()
+
         async with self.pool.acquire() as conn:
             rows = await conn.fetch("""
                 SELECT s.*, p.name_internal, p.name_russian, p.package_weight,
@@ -163,12 +178,24 @@ class DatabasePG:
             """, product_id, days)
             return [dict(row) for row in rows]
 
-    async def calculate_consumption(self, start_date: str, end_date: str) -> List[Dict]:
-        """Расчет расхода между двумя датами"""
-        # Конвертируем строки в date объекты для PostgreSQL
-        from datetime import datetime
-        start_date_obj = datetime.strptime(start_date, '%Y-%m-%d').date()
-        end_date_obj = datetime.strptime(end_date, '%Y-%m-%d').date()
+    async def calculate_consumption(self, start_date, end_date) -> List[Dict]:
+        """Расчет расхода между двумя датами (даты могут быть str или date)"""
+        # Конвертируем строки в date объекты для PostgreSQL если нужно
+        from datetime import datetime, date
+
+        if isinstance(start_date, str):
+            start_date_obj = datetime.strptime(start_date, '%Y-%m-%d').date()
+        elif isinstance(start_date, date):
+            start_date_obj = start_date
+        else:
+            raise ValueError(f"start_date должен быть str или date, получен {type(start_date)}")
+
+        if isinstance(end_date, str):
+            end_date_obj = datetime.strptime(end_date, '%Y-%m-%d').date()
+        elif isinstance(end_date, date):
+            end_date_obj = end_date
+        else:
+            raise ValueError(f"end_date должен быть str или date, получен {type(end_date)}")
 
         async with self.pool.acquire() as conn:
             rows = await conn.fetch("""
