@@ -149,7 +149,7 @@ class DatabasePG:
         async with self.pool.acquire() as conn:
             rows = await conn.fetch("""
                 SELECT s.*, p.name_internal, p.name_russian, p.package_weight,
-                       p.units_per_box, p.box_weight, p.price_per_box
+                       p.units_per_box, p.box_weight, p.price_per_box, p.unit
                 FROM stock s
                 JOIN products p ON s.product_id = p.id
                 WHERE s.date = (
@@ -217,6 +217,71 @@ class DatabasePG:
             """, start_date_obj, end_date_obj)
             return [dict(row) for row in rows]
 
+    async def calculate_consumption_period(self, start_date, end_date) -> List[Dict]:
+        """
+        Расчет расхода за период (работает даже с пропущенными датами)
+        Использует самую раннюю и самую позднюю дату с данными в периоде
+        """
+        from datetime import datetime, date
+
+        # Конвертируем в date объекты
+        if isinstance(start_date, str):
+            start_date_obj = datetime.strptime(start_date, '%Y-%m-%d').date()
+        elif isinstance(start_date, date):
+            start_date_obj = start_date
+        else:
+            raise ValueError(f"start_date должен быть str или date")
+
+        if isinstance(end_date, str):
+            end_date_obj = datetime.strptime(end_date, '%Y-%m-%d').date()
+        elif isinstance(end_date, date):
+            end_date_obj = end_date
+        else:
+            raise ValueError(f"end_date должен быть str или date")
+
+        # Находим самую раннюю и самую позднюю дату с данными в периоде
+        async with self.pool.acquire() as conn:
+            result = await conn.fetchrow("""
+                SELECT
+                    MIN(date) as earliest_date,
+                    MAX(date) as latest_date
+                FROM stock
+                WHERE date >= $1 AND date <= $2
+            """, start_date_obj, end_date_obj)
+
+            if not result or not result['earliest_date'] or not result['latest_date']:
+                return []
+
+            earliest = result['earliest_date']
+            latest = result['latest_date']
+
+            # Если одна и та же дата - нет расхода
+            if earliest == latest:
+                return []
+
+            # Рассчитываем расход между earliest и latest
+            rows = await conn.fetch("""
+                SELECT
+                    p.id,
+                    p.name_internal,
+                    p.name_russian,
+                    p.price_per_box,
+                    p.box_weight,
+                    p.unit,
+                    s1.weight as weight_start,
+                    s2.weight as weight_end,
+                    (s1.weight - s2.weight) as consumed_weight,
+                    ((s1.weight - s2.weight) / p.box_weight * p.price_per_box) as cost
+                FROM products p
+                LEFT JOIN stock s1 ON p.id = s1.product_id AND s1.date = $1
+                LEFT JOIN stock s2 ON p.id = s2.product_id AND s2.date = $2
+                WHERE s1.weight IS NOT NULL AND s2.weight IS NOT NULL
+                  AND p.unit != 'шт'
+                ORDER BY cost DESC
+            """, earliest, latest)
+
+            return [dict(row) for row in rows]
+
     async def get_stock_dates_summary(self) -> List[Dict]:
         """Получить сводку по датам с остатками"""
         async with self.pool.acquire() as conn:
@@ -224,12 +289,18 @@ class DatabasePG:
                 SELECT
                     date,
                     COUNT(*) as product_count,
-                    SUM(weight) as total_weight
-                FROM stock
+                    SUM(CASE WHEN p.unit != 'шт' THEN s.weight ELSE 0 END) as total_weight
+                FROM stock s
+                JOIN products p ON s.product_id = p.id
                 GROUP BY date
                 ORDER BY date DESC
             """)
             return [dict(row) for row in rows]
+
+    async def get_latest_stock_date(self):
+        """Получить дату последних остатков"""
+        async with self.pool.acquire() as conn:
+            return await conn.fetchval("SELECT MAX(date) FROM stock")
 
     async def get_total_stock_records(self) -> int:
         """Получить общее количество записей об остатках"""

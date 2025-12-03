@@ -188,16 +188,29 @@ async def cmd_current(message: Message, db: Database):
         await message.answer("❌ Нет данных об остатках")
         return
 
-    lines = ["📦 <b>ТЕКУЩИЕ ОСТАТКИ</b>\n"]
+    # Получаем дату последних остатков
+    latest_date = await db.get_latest_stock_date()
+    date_str = latest_date.strftime('%d.%m.%Y') if latest_date else 'неизвестно'
+
+    lines = [f"📦 <b>ТЕКУЩИЕ ОСТАТКИ</b> (на {date_str})\n"]
 
     for item in stock:
         # Показываем и упаковки и вес
         packages = item['quantity']
         weight = item['weight']
-        lines.append(
-            f"• {item['name_internal']}: "
-            f"<b>{packages:.0f} уп.</b> ({weight:.1f} кг)"
-        )
+        unit = item.get('unit', 'кг')
+
+        # Для товаров в штуках не показываем вес
+        if unit == 'шт':
+            lines.append(
+                f"• {item['name_internal']}: "
+                f"<b>{packages:.0f} уп.</b>"
+            )
+        else:
+            lines.append(
+                f"• {item['name_internal']}: "
+                f"<b>{packages:.0f} уп.</b> ({weight:.1f} кг)"
+            )
 
     await message.answer("\n".join(lines), reply_markup=get_main_menu(), parse_mode="HTML")
 

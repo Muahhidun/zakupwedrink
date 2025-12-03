@@ -48,7 +48,8 @@ async def cmd_week_report(message: Message, db: Database):
     today_str = today.strftime('%Y-%m-%d')
     week_ago_str = week_ago.strftime('%Y-%m-%d')
 
-    consumption = await db.calculate_consumption(week_ago_str, today_str)
+    # Используем новый метод, который работает с пропущенными датами
+    consumption = await db.calculate_consumption_period(week_ago_str, today_str)
 
     if not consumption:
         await message.answer("❌ Нет данных о расходе за неделю", reply_markup=get_main_menu())
@@ -88,7 +89,8 @@ async def cmd_analytics(message: Message, db: Database):
     today = datetime.now()
     week_ago = today - timedelta(days=7)
 
-    consumption = await db.calculate_consumption(
+    # Используем новый метод, который работает с пропущенными датами
+    consumption = await db.calculate_consumption_period(
         week_ago.strftime('%Y-%m-%d'),
         today.strftime('%Y-%m-%d')
     )
