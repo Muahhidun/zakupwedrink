@@ -22,11 +22,6 @@ async def prepare_order_data(db: Database):
     enriched_stock = []
 
     for item in stock:
-        # ВАЖНО: Пропускаем упаковочные товары (unit='шт')
-        # Для них расчёт расхода в килограммах не имеет смысла
-        if item.get('unit') == 'шт':
-            continue
-
         # Получаем историю остатков за последние 30 дней для стабильного среднего
         history = await db.get_stock_history(item['product_id'], days=30)
         supplies = await db.get_supply_history(item['product_id'], days=30)

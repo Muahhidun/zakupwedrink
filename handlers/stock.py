@@ -35,11 +35,6 @@ async def format_stock_report(db: Database, stock_data: dict) -> str:
             if not product:
                 continue
 
-            # ВАЖНО: Пропускаем упаковочные товары (unit='шт')
-            # Для них расчёт расхода в килограммах не имеет смысла
-            if product.get('unit') == 'шт':
-                continue
-
             # Получаем историю для расчета среднего расхода (30 дней для стабильности)
             history = await db.get_stock_history(product_id, days=30)
             supplies = await db.get_supply_history(product_id, days=30)
@@ -50,8 +45,12 @@ async def format_stock_report(db: Database, stock_data: dict) -> str:
             current_stock = data['weight']
             days_left = days_until_stockout(current_stock, avg_consumption)
 
-            # Формируем текст для товара (все товары здесь имеют unit != 'шт')
-            item_text = f"• {product['name_russian']}: <b>{data['quantity']:.0f} уп.</b> ({current_stock:.1f} кг)"
+            # Формируем текст для товара
+            unit = product.get('unit', 'кг')
+            if unit == 'шт':
+                item_text = f"• {product['name_russian']}: <b>{data['quantity']:.0f} шт.</b>"
+            else:
+                item_text = f"• {product['name_russian']}: <b>{data['quantity']:.0f} уп.</b> ({current_stock:.1f} кг)"
 
             # Добавляем предупреждение если мало данных
             days_text = f"на {days_left} дн."
