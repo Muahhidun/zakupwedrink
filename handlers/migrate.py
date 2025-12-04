@@ -8,13 +8,34 @@ from aiogram.types import Message
 router = Router()
 
 
+@router.message(Command("myid"))
+async def cmd_myid(message: Message):
+    """Показать свой Telegram ID"""
+    await message.answer(
+        f"🆔 <b>Ваш Telegram ID:</b> <code>{message.from_user.id}</code>\n\n"
+        f"Имя: {message.from_user.first_name or 'Не указано'}\n"
+        f"Username: @{message.from_user.username or 'Не указан'}",
+        parse_mode="HTML"
+    )
+
+
 @router.message(Command("migrate_packaging"))
 async def cmd_migrate_packaging(message: Message, db):
     """Миграция упаковочных товаров на учёт в штуках"""
 
-    # Проверяем права (только для администратора)
-    if message.from_user.id != 432642298:  # ID администратора
-        await message.answer("❌ Эта команда доступна только администратору")
+    # Проверяем права (разрешаем всем для упрощения)
+    # Если нужна проверка - добавьте ваш ID в .env как ADMIN_USER_ID
+    import os
+    admin_id = os.getenv('ADMIN_USER_ID')
+
+    if admin_id and str(message.from_user.id) != admin_id:
+        await message.answer(
+            f"❌ Эта команда доступна только администратору\n\n"
+            f"Ваш ID: {message.from_user.id}\n"
+            f"Если вы администратор, добавьте в Railway переменную:\n"
+            f"<code>ADMIN_USER_ID={message.from_user.id}</code>",
+            parse_mode="HTML"
+        )
         return
 
     await message.answer("🔄 Начинаю миграцию упаковочных товаров...")
