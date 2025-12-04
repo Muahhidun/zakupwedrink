@@ -11,15 +11,13 @@ from aiogram import Bot
 logger = logging.getLogger(__name__)
 
 
-async def check_and_send_reminder(bot: Bot, group_chat_id: str, admin_chat_id: str,
-                                   reminder_type: str):
+async def check_and_send_reminder(bot: Bot, group_chat_id: str, reminder_type: str):
     """
     Проверить введены ли остатки сегодня, если нет - отправить напоминание
 
     Args:
         bot: Telegram bot instance
         group_chat_id: ID группового чата
-        admin_chat_id: ID личного чата администратора
         reminder_type: Тип напоминания (morning, afternoon, evening, final)
     """
     try:
@@ -88,17 +86,23 @@ async def check_and_send_reminder(bot: Bot, group_chat_id: str, admin_chat_id: s
         except Exception as e:
             logger.error(f"❌ Ошибка отправки в группу: {e}")
 
-        # Отправляем администратору (если указан ID)
-        if admin_chat_id:
+        # Отправляем всем пользователям в личку
+        user_ids = await db.get_all_active_users()
+        logger.info(f"📢 Рассылка напоминаний {len(user_ids)} пользователям...")
+
+        success_count = 0
+        for user_id in user_ids:
             try:
                 await bot.send_message(
-                    chat_id=admin_chat_id,
+                    chat_id=user_id,
                     text=message,
                     parse_mode="HTML"
                 )
-                logger.info(f"✅ Напоминание ({reminder_type}) отправлено админу {admin_chat_id}")
+                success_count += 1
             except Exception as e:
-                logger.error(f"❌ Ошибка отправки админу: {e}")
+                logger.error(f"❌ Ошибка отправки пользователю {user_id}: {e}")
+
+        logger.info(f"✅ Напоминание ({reminder_type}) отправлено {success_count}/{len(user_ids)} пользователям")
 
     except Exception as e:
         logger.error(f"❌ Ошибка в check_and_send_reminder: {e}")
@@ -110,9 +114,8 @@ def setup_scheduler(bot: Bot) -> AsyncIOScheduler:
     """
     scheduler = AsyncIOScheduler(timezone="Asia/Almaty")  # Казахстан UTC+5
 
-    # Получаем ID чатов из переменных окружения
+    # Получаем ID группового чата из переменных окружения
     group_chat_id = os.getenv('REMINDER_CHAT_ID')  # ID группы
-    admin_chat_id = os.getenv('ADMIN_CHAT_ID')  # ID личного чата администратора
 
     if not group_chat_id:
         logger.warning("⚠️ REMINDER_CHAT_ID не установлен, напоминания отключены")
@@ -131,16 +134,13 @@ def setup_scheduler(bot: Bot) -> AsyncIOScheduler:
         scheduler.add_job(
             check_and_send_reminder,
             trigger=CronTrigger(hour=hour, minute=minute, timezone="Asia/Almaty"),
-            args=[bot, group_chat_id, admin_chat_id, reminder_type],
+            args=[bot, group_chat_id, reminder_type],
             id=f'reminder_{reminder_type}',
             name=name,
             replace_existing=True
         )
         logger.info(f"📅 {name} настроено для чата {group_chat_id}")
 
-    if admin_chat_id:
-        logger.info(f"📱 Личные напоминания администратору: {admin_chat_id}")
-    else:
-        logger.warning("💡 ADMIN_CHAT_ID не установлен, личные напоминания отключены")
+    logger.info("📱 Личные напоминания будут отправлены всем зарегистрированным пользователям бота")
 
     return scheduler

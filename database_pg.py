@@ -60,6 +60,19 @@ class DatabasePG:
                 )
             """)
 
+            # Таблица пользователей (для рассылки напоминаний)
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    id BIGINT PRIMARY KEY,
+                    username TEXT,
+                    first_name TEXT,
+                    last_name TEXT,
+                    is_active BOOLEAN DEFAULT TRUE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
         print("✅ PostgreSQL база данных инициализирована")
 
     async def close(self):
@@ -343,3 +356,25 @@ class DatabasePG:
                 ORDER BY date DESC
             """, product_id, start_date)
             return [dict(row) for row in rows]
+
+    async def add_or_update_user(self, user_id: int, username: str = None,
+                                  first_name: str = None, last_name: str = None):
+        """Добавить или обновить пользователя"""
+        async with self.pool.acquire() as conn:
+            await conn.execute("""
+                INSERT INTO users (id, username, first_name, last_name, last_seen)
+                VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
+                ON CONFLICT (id) DO UPDATE SET
+                    username = EXCLUDED.username,
+                    first_name = EXCLUDED.first_name,
+                    last_name = EXCLUDED.last_name,
+                    last_seen = CURRENT_TIMESTAMP
+            """, user_id, username, first_name, last_name)
+
+    async def get_all_active_users(self) -> List[int]:
+        """Получить всех активных пользователей для рассылки"""
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch("""
+                SELECT id FROM users WHERE is_active = TRUE
+            """)
+            return [row['id'] for row in rows]

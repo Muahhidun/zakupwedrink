@@ -10,8 +10,16 @@ router = Router()
 
 
 @router.message(Command("start"))
-async def cmd_start(message: Message):
+async def cmd_start(message: Message, db):
     """Приветствие и главное меню"""
+    # Регистрируем пользователя для рассылки напоминаний
+    await db.add_or_update_user(
+        user_id=message.from_user.id,
+        username=message.from_user.username,
+        first_name=message.from_user.first_name,
+        last_name=message.from_user.last_name
+    )
+
     is_private = message.chat.type == 'private'
 
     if is_private:
