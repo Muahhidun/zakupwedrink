@@ -29,6 +29,17 @@ async def format_stock_report(db: Database, stock_data: dict) -> str:
 
     for product_id, data in stock_data.items():
         try:
+            # Получаем информацию о продукте
+            products = await db.get_all_products()
+            product = next((p for p in products if p['id'] == product_id), None)
+            if not product:
+                continue
+
+            # ВАЖНО: Пропускаем упаковочные товары (unit='шт')
+            # Для них расчёт расхода в килограммах не имеет смысла
+            if product.get('unit') == 'шт':
+                continue
+
             # Получаем историю для расчета среднего расхода (30 дней для стабильности)
             history = await db.get_stock_history(product_id, days=30)
             supplies = await db.get_supply_history(product_id, days=30)
@@ -36,21 +47,11 @@ async def format_stock_report(db: Database, stock_data: dict) -> str:
             # Рассчитываем средний расход с учетом поставок
             avg_consumption, days_with_data, warning = calculate_average_consumption(history, supplies)
 
-            # Получаем информацию о продукте
-            products = await db.get_all_products()
-            product = next((p for p in products if p['id'] == product_id), None)
-            if not product:
-                continue
-
             current_stock = data['weight']
             days_left = days_until_stockout(current_stock, avg_consumption)
 
-            # Для товаров в штуках не показываем вес
-            unit = product.get('unit', 'кг')
-            if unit == 'шт':
-                item_text = f"• {product['name_russian']}: <b>{data['quantity']:.0f} уп.</b>"
-            else:
-                item_text = f"• {product['name_russian']}: <b>{data['quantity']:.0f} уп.</b> ({current_stock:.1f} кг)"
+            # Формируем текст для товара (все товары здесь имеют unit != 'шт')
+            item_text = f"• {product['name_russian']}: <b>{data['quantity']:.0f} уп.</b> ({current_stock:.1f} кг)"
 
             # Добавляем предупреждение если мало данных
             days_text = f"на {days_left} дн."
