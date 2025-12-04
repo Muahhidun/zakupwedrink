@@ -11,25 +11,97 @@ from aiogram import Bot
 logger = logging.getLogger(__name__)
 
 
-async def send_daily_reminder(bot: Bot, chat_id: str):
+async def check_and_send_reminder(bot: Bot, group_chat_id: str, admin_chat_id: str,
+                                   reminder_type: str):
     """
-    Отправить ежедневное напоминание о добавлении остатков
+    Проверить введены ли остатки сегодня, если нет - отправить напоминание
+
+    Args:
+        bot: Telegram bot instance
+        group_chat_id: ID группового чата
+        admin_chat_id: ID личного чата администратора
+        reminder_type: Тип напоминания (morning, afternoon, evening, final)
     """
     try:
-        message = (
-            "⏰ <b>Напоминание!</b>\n\n"
-            "Время добавить остатки на складе.\n"
-            "Нажмите 📝 Ввод остатков для обновления данных.\n\n"
-            f"Дата: {datetime.now().strftime('%d.%m.%Y')}"
-        )
-        await bot.send_message(
-            chat_id=chat_id,
-            text=message,
-            parse_mode="HTML"
-        )
-        logger.info(f"✅ Напоминание отправлено в чат {chat_id}")
+        # Импортируем здесь чтобы избежать циклических зависимостей
+        from database_pg import DatabasePG
+
+        database_url = os.getenv('DATABASE_URL')
+        if not database_url:
+            logger.warning("⚠️ DATABASE_URL не установлен")
+            return
+
+        db = DatabasePG(database_url)
+        await db.init_db()
+
+        # Проверяем были ли введены остатки сегодня
+        today = datetime.now().date()
+        has_data = await db.has_stock_for_date(today)
+
+        await db.close()
+
+        if has_data:
+            logger.info(f"✅ Остатки за {today} уже введены, напоминание не требуется")
+            return
+
+        # Формируем сообщение в зависимости от времени
+        messages = {
+            'morning': (
+                "⏰ <b>Доброе утро!</b>\n\n"
+                "Напоминание: необходимо ввести остатки на складе.\n"
+                "Нажмите 📝 Ввод остатков для обновления данных.\n\n"
+                f"Дата: {today.strftime('%d.%m.%Y')}"
+            ),
+            'afternoon': (
+                "⏰ <b>Напоминание!</b>\n\n"
+                "Остатки ещё не введены.\n"
+                "Пожалуйста, внесите данные по складу.\n\n"
+                f"Дата: {today.strftime('%d.%m.%Y')}"
+            ),
+            'evening': (
+                "⚠️ <b>Важное напоминание!</b>\n\n"
+                "Остатки до сих пор не введены.\n"
+                "Это влияет на точность расчёта закупов.\n"
+                "Пожалуйста, внесите данные как можно скорее.\n\n"
+                f"Дата: {today.strftime('%d.%m.%Y')}"
+            ),
+            'final': (
+                "🚨 <b>КРАЙНЕЕ НАПОМИНАНИЕ!</b>\n\n"
+                "Остатки за сегодня всё ещё не введены!\n"
+                "Это последнее напоминание за день.\n\n"
+                "⚠️ Без актуальных данных расчёт закупов будет неточным.\n"
+                "Пожалуйста, не забудьте ввести остатки.\n\n"
+                f"Дата: {today.strftime('%d.%m.%Y')}"
+            )
+        }
+
+        message = messages.get(reminder_type, messages['morning'])
+
+        # Отправляем в группу
+        try:
+            await bot.send_message(
+                chat_id=group_chat_id,
+                text=message,
+                parse_mode="HTML"
+            )
+            logger.info(f"✅ Напоминание ({reminder_type}) отправлено в группу {group_chat_id}")
+        except Exception as e:
+            logger.error(f"❌ Ошибка отправки в группу: {e}")
+
+        # Отправляем администратору (если указан ID)
+        if admin_chat_id:
+            try:
+                await bot.send_message(
+                    chat_id=admin_chat_id,
+                    text=message,
+                    parse_mode="HTML"
+                )
+                logger.info(f"✅ Напоминание ({reminder_type}) отправлено админу {admin_chat_id}")
+            except Exception as e:
+                logger.error(f"❌ Ошибка отправки админу: {e}")
+
     except Exception as e:
-        logger.error(f"❌ Ошибка отправки напоминания: {e}")
+        logger.error(f"❌ Ошибка в check_and_send_reminder: {e}")
 
 
 def setup_scheduler(bot: Bot) -> AsyncIOScheduler:
@@ -38,25 +110,37 @@ def setup_scheduler(bot: Bot) -> AsyncIOScheduler:
     """
     scheduler = AsyncIOScheduler(timezone="Asia/Almaty")  # Казахстан UTC+5
 
-    # Получаем ID чата из переменных окружения
-    reminder_chat_id = os.getenv('REMINDER_CHAT_ID')
+    # Получаем ID чатов из переменных окружения
+    group_chat_id = os.getenv('REMINDER_CHAT_ID')  # ID группы
+    admin_chat_id = os.getenv('ADMIN_CHAT_ID')  # ID личного чата администратора
 
-    if not reminder_chat_id:
+    if not group_chat_id:
         logger.warning("⚠️ REMINDER_CHAT_ID не установлен, напоминания отключены")
         logger.warning("💡 Добавьте REMINDER_CHAT_ID в .env файл для включения напоминаний")
         return scheduler
 
-    # Добавляем задачу: каждый день в 11:00 по времени Алматы
-    # ВАЖНО: явно указываем timezone в CronTrigger!
-    scheduler.add_job(
-        send_daily_reminder,
-        trigger=CronTrigger(hour=11, minute=0, timezone="Asia/Almaty"),
-        args=[bot, reminder_chat_id],
-        id='daily_stock_reminder',
-        name='Ежедневное напоминание об остатках',
-        replace_existing=True
-    )
+    # Добавляем напоминания на разное время
+    reminders = [
+        (11, 0, 'morning', 'Утреннее напоминание (11:00)'),
+        (13, 0, 'afternoon', 'Дневное напоминание (13:00)'),
+        (15, 0, 'evening', 'Вечернее напоминание (15:00)'),
+        (17, 0, 'final', 'Крайнее напоминание (17:00)')
+    ]
 
-    logger.info(f"📅 Планировщик настроен: напоминания в 11:00 по Астане в чат {reminder_chat_id}")
+    for hour, minute, reminder_type, name in reminders:
+        scheduler.add_job(
+            check_and_send_reminder,
+            trigger=CronTrigger(hour=hour, minute=minute, timezone="Asia/Almaty"),
+            args=[bot, group_chat_id, admin_chat_id, reminder_type],
+            id=f'reminder_{reminder_type}',
+            name=name,
+            replace_existing=True
+        )
+        logger.info(f"📅 {name} настроено для чата {group_chat_id}")
+
+    if admin_chat_id:
+        logger.info(f"📱 Личные напоминания администратору: {admin_chat_id}")
+    else:
+        logger.warning("💡 ADMIN_CHAT_ID не установлен, личные напоминания отключены")
 
     return scheduler

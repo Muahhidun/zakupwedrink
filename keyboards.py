@@ -33,6 +33,7 @@ def get_main_menu(is_private_chat: bool = True) -> ReplyKeyboardMarkup:
                     KeyboardButton(text="📊 Аналитика"),
                 ],
                 [
+                    KeyboardButton(text="📜 История склада"),
                     KeyboardButton(text="ℹ️ Помощь"),
                 ],
             ],
@@ -53,6 +54,9 @@ def get_main_menu(is_private_chat: bool = True) -> ReplyKeyboardMarkup:
                 ],
                 [
                     KeyboardButton(text="📊 Аналитика"),
+                    KeyboardButton(text="📜 История склада"),
+                ],
+                [
                     KeyboardButton(text="ℹ️ Помощь"),
                 ],
             ],

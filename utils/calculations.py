@@ -38,9 +38,9 @@ def calculate_average_consumption(history: List[Dict], supplies: List[Dict] = No
         current_date = current['date']
         next_date = next_record['date']
 
-        # Пропускаем если текущий остаток = 0 (не можем посчитать расход)
-        # НО учитываем если следующий = 0 (товар закончился - это валидный расход)
-        if current_stock == 0:
+        # Пропускаем если текущий или следующий остаток = 0
+        # Когда товар закончился, расход может быть искажён (товара не было или брали больше)
+        if current_stock == 0 or next_stock == 0:
             continue
 
         # Находим поставки между этими датами

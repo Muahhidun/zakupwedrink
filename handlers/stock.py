@@ -29,9 +29,9 @@ async def format_stock_report(db: Database, stock_data: dict) -> str:
 
     for product_id, data in stock_data.items():
         try:
-            # Получаем историю для расчета среднего расхода (14 дней)
-            history = await db.get_stock_history(product_id, days=14)
-            supplies = await db.get_supply_history(product_id, days=14)
+            # Получаем историю для расчета среднего расхода (30 дней для стабильности)
+            history = await db.get_stock_history(product_id, days=30)
+            supplies = await db.get_supply_history(product_id, days=30)
 
             # Рассчитываем средний расход с учетом поставок
             avg_consumption, days_with_data, warning = calculate_average_consumption(history, supplies)
