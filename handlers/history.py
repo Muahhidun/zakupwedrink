@@ -70,7 +70,7 @@ async def history_callback(callback: CallbackQuery, db: Database):
     date_str = date_obj.strftime('%d.%m.%Y')
 
     # Получаем остатки на эту дату
-    stocks = await db.get_stock_on_date(date_obj)
+    stocks = await db.get_stock_by_date(date_obj)
 
     # Получаем поставки на эту дату
     async with db.pool.acquire() as conn:
