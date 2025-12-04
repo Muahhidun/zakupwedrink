@@ -168,14 +168,27 @@ class DatabasePG:
             return count > 0
 
     async def get_stock_history(self, product_id: int, days: int = 7) -> List[Dict]:
-        """Получить историю остатков товара за последние N дней"""
+        """Получить историю остатков товара за последние N дней (от самой последней записи)"""
+        from datetime import timedelta
         async with self.pool.acquire() as conn:
+            # Сначала находим последнюю дату для этого товара
+            latest_date = await conn.fetchval("""
+                SELECT MAX(date) FROM stock WHERE product_id = $1
+            """, product_id)
+
+            if not latest_date:
+                return []
+
+            # Вычисляем начальную дату в Python
+            start_date = latest_date - timedelta(days=days)
+
+            # Затем берём записи за период
             rows = await conn.fetch("""
                 SELECT * FROM stock
                 WHERE product_id = $1
+                  AND date >= $2
                 ORDER BY date DESC
-                LIMIT $2
-            """, product_id, days)
+            """, product_id, start_date)
             return [dict(row) for row in rows]
 
     async def calculate_consumption(self, start_date, end_date) -> List[Dict]:
@@ -308,12 +321,25 @@ class DatabasePG:
             return await conn.fetchval("SELECT COUNT(*) FROM stock")
 
     async def get_supply_history(self, product_id: int, days: int = 14) -> List[Dict]:
-        """Получить историю поставок товара за последние N дней"""
+        """Получить историю поставок товара за последние N дней (от последней записи остатков)"""
+        from datetime import timedelta
         async with self.pool.acquire() as conn:
+            # Находим последнюю дату остатков для этого товара
+            latest_stock_date = await conn.fetchval("""
+                SELECT MAX(date) FROM stock WHERE product_id = $1
+            """, product_id)
+
+            if not latest_stock_date:
+                return []
+
+            # Вычисляем начальную дату в Python
+            start_date = latest_stock_date - timedelta(days=days)
+
+            # Берём поставки за период
             rows = await conn.fetch("""
                 SELECT * FROM supplies
                 WHERE product_id = $1
-                  AND date >= CURRENT_DATE - INTERVAL '%s days'
+                  AND date >= $2
                 ORDER BY date DESC
-            """ % days, product_id)
+            """, product_id, start_date)
             return [dict(row) for row in rows]

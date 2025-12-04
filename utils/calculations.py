@@ -38,17 +38,24 @@ def calculate_average_consumption(history: List[Dict], supplies: List[Dict] = No
         current_date = current['date']
         next_date = next_record['date']
 
-        # Пропускаем если один из остатков = 0
-        if current_stock == 0 or next_stock == 0:
+        # Пропускаем если текущий остаток = 0 (не можем посчитать расход)
+        # НО учитываем если следующий = 0 (товар закончился - это валидный расход)
+        if current_stock == 0:
             continue
 
         # Находим поставки между этими датами
         supply_weight = 0.0
         for supply in supplies:
             supply_date = supply['date']
-            # Поставка учитывается если её дата >= current_date и < next_date
-            # Так как поставка приходит ПОСЛЕ подсчета остатков того же дня
-            if current_date <= supply_date < next_date:
+            # Поставка учитывается если она в интервале [current_date, next_date]
+            # НО с проверкой: если поставка на дату current_date и остатки current_date
+            # близки к размеру поставки, то поставка УЖЕ учтена в остатках
+            if current_date <= supply_date <= next_date:
+                # Специальный случай: поставка в тот же день что и current_date
+                if supply_date == current_date:
+                    # Если остатки >= 90% от поставки, значит поставка УЖЕ учтена в остатках
+                    if current_stock >= supply['weight'] * 0.9:
+                        continue  # Пропускаем, чтобы не учесть дважды
                 supply_weight += supply['weight']
 
         # Расход = текущий остаток + поставки - следующий остаток
