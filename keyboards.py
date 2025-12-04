@@ -19,12 +19,9 @@ def get_main_menu(is_private_chat: bool = True) -> ReplyKeyboardMarkup:
             keyboard=[
                 [
                     KeyboardButton(
-                        text="📝 Ввод остатков (форма)",
+                        text="📝 Ввод остатков",
                         web_app=WebAppInfo(url=web_app_url)
                     ),
-                ],
-                [
-                    KeyboardButton(text="📝 Ввод остатков (чат)"),
                     KeyboardButton(text="📦 Текущие остатки"),
                 ],
                 [
@@ -43,22 +40,19 @@ def get_main_menu(is_private_chat: bool = True) -> ReplyKeyboardMarkup:
             input_field_placeholder="Выберите действие"
         )
     else:
-        # Для групп - без WebApp кнопки
+        # Для групп - без WebApp кнопки и без ввода остатков
         keyboard = ReplyKeyboardMarkup(
             keyboard=[
                 [
-                    KeyboardButton(text="📝 Ввод остатков (чат)"),
                     KeyboardButton(text="📦 Текущие остатки"),
-                ],
-                [
-                    KeyboardButton(text="📦 Добавить поставку"),
                     KeyboardButton(text="🛒 Список закупа"),
                 ],
                 [
+                    KeyboardButton(text="📦 Добавить поставку"),
                     KeyboardButton(text="💰 Отчеты"),
-                    KeyboardButton(text="📊 Аналитика"),
                 ],
                 [
+                    KeyboardButton(text="📊 Аналитика"),
                     KeyboardButton(text="ℹ️ Помощь"),
                 ],
             ],

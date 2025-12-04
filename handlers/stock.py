@@ -107,13 +107,22 @@ async def start_stock_input(message: Message, state: FSMContext, db: Database):
     await state.set_state(StockInput.entering_stock)
     await state.update_data(products=products, current_index=0, stock_data={})
 
+    # Клавиатура с кнопкой отмены
+    from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+    cancel_keyboard = ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="❌ Отмена")]],
+        resize_keyboard=True
+    )
+
     product = products[0]
     await message.answer(
         f"📝 <b>Ввод остатков на {datetime.now().strftime('%d.%m.%Y')}</b>\n\n"
         f"1/{len(products)} <b>{product['name_internal']}</b>\n"
         f"({product['name_russian']})\n"
         f"Вес упаковки: {product['package_weight']} {product['unit']}\n\n"
-        f"Введите <b>количество упаковок</b> (или 0 если нет):",
+        f"Введите <b>количество упаковок</b> (или 0 если нет):\n"
+        f"💡 Для отмены напишите /cancel или нажмите кнопку ниже",
+        reply_markup=cancel_keyboard,
         parse_mode="HTML"
     )
 
@@ -121,6 +130,17 @@ async def start_stock_input(message: Message, state: FSMContext, db: Database):
 @router.message(StockInput.entering_stock)
 async def process_stock_input(message: Message, state: FSMContext, db: Database):
     """Обработка ввода остатков"""
+    # Проверяем на команду отмены
+    if message.text and message.text.lower() in ['/cancel', 'отмена', '❌ отмена', 'cancel']:
+        await state.clear()
+        is_private = message.chat.type == 'private'
+        await message.answer(
+            "❌ Ввод остатков отменён",
+            reply_markup=get_main_menu(is_private),
+            parse_mode="HTML"
+        )
+        return
+
     data = await state.get_data()
     products = data['products']
     current_index = data['current_index']
@@ -252,10 +272,10 @@ async def cmd_current(message: Message, db: Database):
 
 
 # Обработчики команд и кнопок
+# Убрана кнопка "📝 Ввод остатков (чат)" - оставлен только Mini App
 @router.message(Command("stock"))
-@router.message(F.text == "📝 Ввод остатков (чат)")
 async def cmd_stock(message: Message, state: FSMContext, db: Database):
-    """Команда и кнопка для ввода остатков через чат"""
+    """Команда для ввода остатков через чат (только для отладки)"""
     await start_stock_input(message, state, db)
 
 
