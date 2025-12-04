@@ -256,11 +256,11 @@ async def cmd_current(message: Message, db: Database):
         weight = item['weight']
         unit = item.get('unit', 'кг')
 
-        # Для товаров в штуках не показываем вес
+        # Для товаров в штуках показываем количество штук
         if unit == 'шт':
             lines.append(
                 f"• {item['name_internal']}: "
-                f"<b>{packages:.0f} уп.</b>"
+                f"<b>{packages:.0f} шт.</b>"
             )
         else:
             lines.append(

@@ -144,7 +144,8 @@ def get_products_to_order(stock_data: List[Dict], days_threshold: int = 7,
                 'needed_weight': needed_weight,
                 'boxes_to_order': boxes,
                 'order_cost': boxes * item['price_per_box'],
-                'urgency': 'СРОЧНО' if days_left <= 3 else 'Скоро'
+                'urgency': 'СРОЧНО' if days_left <= 3 else 'Скоро',
+                'unit': item.get('unit', 'кг')
             })
 
     # Сортируем по срочности (сколько дней осталось)
@@ -166,12 +167,14 @@ def format_order_list(products: List[Dict]) -> str:
 
     for p in products:
         urgency_icon = "🚨" if p['urgency'] == 'СРОЧНО' else "⚠️"
+        unit = p.get('unit', 'кг')
+
         lines.append(
             f"{urgency_icon} <b>{p['name_russian']}</b>\n"
-            f"   Осталось: {p['current_stock']:.1f} кг (на {p['days_left']} дн.)\n"
-            f"   Расход: {p['avg_daily_consumption']:.1f} кг/день\n"
+            f"   Осталось: {p['current_stock']:.1f} {unit} (на {p['days_left']} дн.)\n"
+            f"   Расход: {p['avg_daily_consumption']:.1f} {unit}/день\n"
             f"   📦 Заказать: <b>{p['boxes_to_order']} коробок</b> "
-            f"({p['needed_weight']:.1f} кг) = {p['order_cost']:,.0f}₸\n"
+            f"({p['needed_weight']:.1f} {unit}) = {p['order_cost']:,.0f}₸\n"
         )
 
     lines.append(f"\n💰 <b>Общая сумма заказа: {total_cost:,.0f}₸</b>")
