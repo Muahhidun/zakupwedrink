@@ -154,6 +154,56 @@ async def get_stock_for_date(request):
         return web.json_response({'error': str(e)}, status=500)
 
 
+async def get_yesterday_stock(request):
+    """API: Получить остатки за вчерашний рабочий день"""
+    try:
+        from datetime import timedelta
+
+        # Определяем текущий рабочий день
+        working_date_str = get_working_date()
+        date_obj = datetime.strptime(working_date_str, '%Y-%m-%d').date()
+
+        # Вчерашний день (может быть не рабочим)
+        yesterday = date_obj - timedelta(days=1)
+
+        # Ищем последний день с данными до сегодня
+        async with db.pool.acquire() as conn:
+            # Находим максимальную дату, которая меньше сегодняшней
+            latest_previous_date = await conn.fetchval("""
+                SELECT MAX(date)
+                FROM stock
+                WHERE date < $1
+            """, date_obj)
+
+            if not latest_previous_date:
+                # Нет предыдущих данных
+                return web.json_response({
+                    'stock': [],
+                    'date': None,
+                    'working_date': working_date_str
+                })
+
+            # Получаем остатки за эту дату
+            stock = await db.get_stock_by_date(latest_previous_date)
+
+            # Конвертируем datetime и date в строки для JSON
+            for item in stock:
+                if 'created_at' in item and item['created_at']:
+                    item['created_at'] = item['created_at'].isoformat()
+                if 'date' in item and item['date']:
+                    item['date'] = item['date'].isoformat()
+
+            return web.json_response({
+                'stock': stock,
+                'date': latest_previous_date.isoformat(),
+                'working_date': working_date_str
+            })
+
+    except Exception as e:
+        print(f"Ошибка получения вчерашних остатков: {e}")
+        return web.json_response({'error': str(e)}, status=500)
+
+
 def create_app():
     """Создать приложение aiohttp"""
     app = web.Application()
@@ -173,6 +223,7 @@ def create_app():
     app.router.add_post('/api/stock', save_stock)
     app.router.add_get('/api/stock/latest', get_latest_stock)
     app.router.add_get('/api/stock/check', check_stock_exists)
+    app.router.add_get('/api/stock/yesterday', get_yesterday_stock)
     app.router.add_get('/api/stock/{date}', get_stock_for_date)
 
     # Применяем CORS ко всем роутам

@@ -77,32 +77,67 @@
         }
 
         .stock-row {
-            display: flex;
+            display: grid;
+            grid-template-columns: 1fr auto auto auto;
+            gap: 8px;
             align-items: center;
             padding: 12px 0;
             border-bottom: 1px solid var(--tg-theme-section-separator-color, #e8e8e8);
         }
 
         .product-info {
-            flex: 1;
-            padding-right: 12px;
+            padding-right: 8px;
         }
 
         .product-name {
-            font-size: 15px;
+            font-size: 14px;
             font-weight: 500;
             margin-bottom: 4px;
         }
 
         .product-details {
-            font-size: 13px;
+            font-size: 12px;
+            color: var(--tg-theme-hint-color, #999);
+        }
+
+        .stock-column {
+            text-align: center;
+            min-width: 60px;
+        }
+
+        .column-label {
+            font-size: 10px;
+            color: var(--tg-theme-hint-color, #999);
+            margin-bottom: 4px;
+            text-transform: uppercase;
+        }
+
+        .column-value {
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .consumption-value {
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .consumption-positive {
+            color: #dc3545;
+        }
+
+        .consumption-negative {
+            color: #28a745;
+        }
+
+        .consumption-zero {
             color: var(--tg-theme-hint-color, #999);
         }
 
         .quantity-input {
-            width: 80px;
-            padding: 8px 12px;
-            font-size: 16px;
+            width: 70px;
+            padding: 8px 6px;
+            font-size: 14px;
             border: 1px solid var(--tg-theme-section-separator-color, #e8e8e8);
             border-radius: 8px;
             background-color: var(--tg-theme-secondary-bg-color, #f5f5f5);
@@ -181,6 +216,8 @@
         let products = [];
         let editMode = false;
         let workingDate = '';
+        let yesterdayStock = {};  // Мапа product_id -> quantity вчерашних остатков
+        let yesterdayDate = null;
 
         // API базовый URL
         const API_URL = window.location.origin;
@@ -225,11 +262,12 @@
                     stockMap[item.product_id] = item.quantity;
                 });
 
-                // Заполняем форму
+                // Заполняем форму и пересчитываем расход
                 products.forEach(product => {
                     const input = document.getElementById(`qty-${product.id}`);
                     if (input && stockMap[product.id] !== undefined) {
                         input.value = stockMap[product.id];
+                        updateConsumption(product.id);  // Пересчитываем расход
                     }
                 });
 
@@ -241,6 +279,26 @@
             } catch (error) {
                 console.error('Ошибка загрузки данных:', error);
                 tg.showAlert('Ошибка загрузки данных');
+            }
+        }
+
+        // Загрузка остатков за вчера
+        async function loadYesterdayStock() {
+            try {
+                const response = await fetch(`${API_URL}/api/stock/yesterday`);
+                const data = await response.json();
+
+                yesterdayDate = data.date;
+
+                // Создаём мапу product_id -> quantity
+                if (data.stock && data.stock.length > 0) {
+                    data.stock.forEach(item => {
+                        yesterdayStock[item.product_id] = item.quantity;
+                    });
+                }
+            } catch (error) {
+                console.error('Ошибка загрузки вчерашних остатков:', error);
+                // Не блокируем работу если вчерашних данных нет
             }
         }
 
@@ -256,6 +314,29 @@
             }
         }
 
+        // Пересчёт расхода для товара
+        function updateConsumption(productId) {
+            const yesterday = yesterdayStock[productId] || 0;
+            const input = document.getElementById(`qty-${productId}`);
+            const today = parseFloat(input.value) || 0;
+
+            const consumption = yesterday - today;
+            const consumptionEl = document.getElementById(`consumption-${productId}`);
+
+            if (!consumptionEl) return;
+
+            if (consumption > 0) {
+                consumptionEl.textContent = `-${consumption.toFixed(1)}`;
+                consumptionEl.className = 'consumption-value consumption-positive';
+            } else if (consumption < 0) {
+                consumptionEl.textContent = `+${Math.abs(consumption).toFixed(1)}`;
+                consumptionEl.className = 'consumption-value consumption-negative';
+            } else {
+                consumptionEl.textContent = '0';
+                consumptionEl.className = 'consumption-value consumption-zero';
+            }
+        }
+
         // Отрисовка таблицы
         function renderProducts() {
             const table = document.getElementById('stockTable');
@@ -266,6 +347,8 @@
                 row.className = 'stock-row';
 
                 const weight = parseFloat(product.package_weight).toFixed(2);
+                const yesterday = yesterdayStock[product.id] || 0;
+                const yesterdayDisplay = yesterday > 0 ? yesterday.toFixed(1) : '-';
 
                 row.innerHTML = `
                     <div class="product-info">
@@ -274,16 +357,27 @@
                             ${weight} ${product.unit} × ${product.units_per_box} уп.
                         </div>
                     </div>
-                    <input
-                        type="number"
-                        class="quantity-input"
-                        id="qty-${product.id}"
-                        min="0"
-                        step="0.5"
-                        value="0"
-                        inputmode="decimal"
-                        placeholder="уп."
-                    >
+                    <div class="stock-column">
+                        <div class="column-label">Вчера</div>
+                        <div class="column-value">${yesterdayDisplay}</div>
+                    </div>
+                    <div class="stock-column">
+                        <div class="column-label">Расход</div>
+                        <div class="consumption-value consumption-zero" id="consumption-${product.id}">-</div>
+                    </div>
+                    <div class="stock-column">
+                        <input
+                            type="number"
+                            class="quantity-input"
+                            id="qty-${product.id}"
+                            min="0"
+                            step="0.5"
+                            value="0"
+                            inputmode="decimal"
+                            placeholder="уп."
+                            oninput="updateConsumption(${product.id})"
+                        >
+                    </div>
                 `;
                 table.appendChild(row);
             });
@@ -353,6 +447,7 @@
         // Инициализация
         async function init() {
             await checkExistingData();
+            await loadYesterdayStock();  // Загружаем вчерашние данные
             await loadProducts();
         }
 
