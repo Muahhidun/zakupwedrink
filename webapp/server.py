@@ -139,7 +139,14 @@ async def get_stock_for_date(request):
         date_str = request.match_info.get('date')
         date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
 
+        print(f"📅 API запрос остатков за дату: {date_str}")
         stock = await db.get_stock_by_date(date_obj)
+        print(f"📦 Найдено {len(stock)} записей")
+
+        if len(stock) > 0:
+            # Показываем первые 3 записи для отладки
+            for i, item in enumerate(stock[:3]):
+                print(f"  [{i+1}] ID={item.get('product_id')}, qty={item.get('quantity')}, name={item.get('name_internal', 'N/A')}")
 
         # Конвертируем datetime и date в строки для JSON
         for item in stock:
@@ -150,7 +157,9 @@ async def get_stock_for_date(request):
 
         return web.json_response(stock)
     except Exception as e:
-        print(f"Ошибка получения остатков: {e}")
+        print(f"❌ Ошибка получения остатков: {e}")
+        import traceback
+        traceback.print_exc()
         return web.json_response({'error': str(e)}, status=500)
 
 

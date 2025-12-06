@@ -253,8 +253,14 @@
         // Загрузка существующих данных для редактирования
         async function loadExistingData() {
             try {
+                console.log(`🔍 Загрузка данных за дату: ${workingDate}`);
                 const response = await fetch(`${API_URL}/api/stock/${workingDate}`);
                 const existingStock = await response.json();
+
+                console.log(`📦 Получено ${existingStock.length} записей`);
+                if (existingStock.length > 0) {
+                    console.log('Первые 3 записи:', existingStock.slice(0, 3));
+                }
 
                 // Создаём мапу product_id -> quantity
                 const stockMap = {};
@@ -262,14 +268,20 @@
                     stockMap[item.product_id] = item.quantity;
                 });
 
+                console.log(`🗺️ Создана мапа для ${Object.keys(stockMap).length} товаров`);
+
                 // Заполняем форму и пересчитываем расход
+                let filled = 0;
                 products.forEach(product => {
                     const input = document.getElementById(`qty-${product.id}`);
                     if (input && stockMap[product.id] !== undefined) {
                         input.value = stockMap[product.id];
                         updateConsumption(product.id);  // Пересчитываем расход
+                        filled++;
                     }
                 });
+
+                console.log(`✅ Заполнено ${filled} полей из ${products.length}`);
 
                 // Скрываем алерт, включаем режим редактирования
                 document.getElementById('existingDataAlert').classList.remove('show');
@@ -277,8 +289,8 @@
 
                 tg.showAlert('Данные загружены. Внесите изменения и сохраните.');
             } catch (error) {
-                console.error('Ошибка загрузки данных:', error);
-                tg.showAlert('Ошибка загрузки данных');
+                console.error('❌ Ошибка загрузки данных:', error);
+                tg.showAlert('Ошибка загрузки данных: ' + error.message);
             }
         }
 
