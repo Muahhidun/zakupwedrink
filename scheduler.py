@@ -36,10 +36,9 @@ async def check_and_send_reminder(bot: Bot, group_chat_id: str, reminder_type: s
         today = datetime.now().date()
         has_data = await db.has_stock_for_date(today)
 
-        await db.close()
-
         if has_data:
             logger.info(f"✅ Остатки за {today} уже введены, напоминание не требуется")
+            await db.close()
             return
 
         # Формируем сообщение в зависимости от времени
@@ -103,6 +102,9 @@ async def check_and_send_reminder(bot: Bot, group_chat_id: str, reminder_type: s
                 logger.error(f"❌ Ошибка отправки пользователю {user_id}: {e}")
 
         logger.info(f"✅ Напоминание ({reminder_type}) отправлено {success_count}/{len(user_ids)} пользователям")
+
+        # Закрываем БД после всех операций
+        await db.close()
 
     except Exception as e:
         logger.error(f"❌ Ошибка в check_and_send_reminder: {e}")
