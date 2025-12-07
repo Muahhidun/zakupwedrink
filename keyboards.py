@@ -34,7 +34,10 @@ def get_main_menu(is_private_chat: bool = True) -> ReplyKeyboardMarkup:
                 ],
                 [
                     KeyboardButton(text="📜 История склада"),
-                    KeyboardButton(text="ℹ️ Помощь"),
+                    KeyboardButton(text="📈 Средний расход"),
+                ],
+                [
+                    KeyboardButton(text="🧪 Тестовый отчёт"),
                 ],
             ],
             resize_keyboard=True,
@@ -57,7 +60,8 @@ def get_main_menu(is_private_chat: bool = True) -> ReplyKeyboardMarkup:
                     KeyboardButton(text="📜 История склада"),
                 ],
                 [
-                    KeyboardButton(text="ℹ️ Помощь"),
+                    KeyboardButton(text="📈 Средний расход"),
+                    KeyboardButton(text="🧪 Тестовый отчёт"),
                 ],
             ],
             resize_keyboard=True,

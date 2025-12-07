@@ -346,6 +346,7 @@ async def cmd_current_handler(message: Message, db: Database):
 
 
 @router.message(Command("test_report"))
+@router.message(F.text == "🧪 Тестовый отчёт")
 async def cmd_test_report(message: Message, db: Database):
     """Протестировать отчёт по остаткам на последних данных"""
     try:

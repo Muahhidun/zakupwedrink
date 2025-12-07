@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 
 def calculate_average_consumption(history: List[Dict], supplies: List[Dict] = None) -> Tuple[float, int, str]:
     """
-    Рассчитать средний расход за период с учетом поставок
+    Рассчитать средний расход за период с учетом поставок и фильтрацией аномалий
 
     Args:
         history: список остатков, отсортированных по дате (от новых к старым)
@@ -22,12 +22,11 @@ def calculate_average_consumption(history: List[Dict], supplies: List[Dict] = No
     if supplies is None:
         supplies = []
 
-    total_consumed = 0.0
-    total_days = 0
-    valid_periods = 0
-
     # Сортируем по дате (от старых к новым) для правильного расчета
     history_sorted = sorted(history, key=lambda x: x['date'])
+
+    # ПЕРВЫЙ ПРОХОД: собираем все расходы для определения аномалий
+    daily_consumptions = []  # Список кортежей (daily_consumption, consumption, days_diff, index)
 
     for i in range(len(history_sorted) - 1):
         current = history_sorted[i]
@@ -39,7 +38,6 @@ def calculate_average_consumption(history: List[Dict], supplies: List[Dict] = No
         next_date = next_record['date']
 
         # Пропускаем если текущий или следующий остаток = 0
-        # Когда товар закончился, расход может быть искажён (товара не было или брали больше)
         if current_stock == 0 or next_stock == 0:
             continue
 
@@ -47,21 +45,16 @@ def calculate_average_consumption(history: List[Dict], supplies: List[Dict] = No
         supply_weight = 0.0
         for supply in supplies:
             supply_date = supply['date']
-            # Поставка учитывается если она в интервале [current_date, next_date]
-            # НО с проверкой: если поставка на дату current_date и остатки current_date
-            # близки к размеру поставки, то поставка УЖЕ учтена в остатках
             if current_date <= supply_date <= next_date:
-                # Специальный случай: поставка в тот же день что и current_date
                 if supply_date == current_date:
-                    # Если остатки >= 90% от поставки, значит поставка УЖЕ учтена в остатках
                     if current_stock >= supply['weight'] * 0.9:
-                        continue  # Пропускаем, чтобы не учесть дважды
+                        continue
                 supply_weight += supply['weight']
 
         # Расход = текущий остаток + поставки - следующий остаток
         consumption = current_stock + supply_weight - next_stock
 
-        # Пропускаем если расход отрицательный (ошибка данных)
+        # Пропускаем если расход отрицательный
         if consumption < 0:
             continue
 
@@ -70,19 +63,46 @@ def calculate_average_consumption(history: List[Dict], supplies: List[Dict] = No
         if days_diff <= 0:
             continue
 
-        total_consumed += consumption
-        total_days += days_diff
-        valid_periods += 1
+        # Расход в день для этого периода
+        daily_consumption = consumption / days_diff
+        daily_consumptions.append((daily_consumption, consumption, days_diff, i))
 
-    if total_days == 0:
+    if len(daily_consumptions) == 0:
         return 0.0, 0, "Нет валидных периодов для расчета"
 
+    # Вычисляем предварительное среднее
+    total_consumption_preliminary = sum(dc[1] for dc in daily_consumptions)
+    total_days_preliminary = sum(dc[2] for dc in daily_consumptions)
+    avg_daily_preliminary = total_consumption_preliminary / total_days_preliminary
+
+    # ВТОРОЙ ПРОХОД: фильтруем аномалии (расход > 5x от среднего)
+    ANOMALY_THRESHOLD = 5.0
+    filtered_consumptions = []
+    anomalies_found = 0
+
+    for daily_consumption, consumption, days_diff, idx in daily_consumptions:
+        if daily_consumption > avg_daily_preliminary * ANOMALY_THRESHOLD:
+            # Это аномалия - пропускаем
+            anomalies_found += 1
+            continue
+        filtered_consumptions.append((consumption, days_diff))
+
+    if len(filtered_consumptions) == 0:
+        # Все периоды были аномалиями - возвращаем предварительное среднее
+        warning = "(все данные аномальные, расчёт может быть неточным)"
+        return avg_daily_preliminary, total_days_preliminary, warning
+
+    # Финальный расчёт без аномалий
+    total_consumed = sum(fc[0] for fc in filtered_consumptions)
+    total_days = sum(fc[1] for fc in filtered_consumptions)
     avg_consumption = total_consumed / total_days
 
-    # Предупреждение если мало данных
+    # Предупреждение
     warning = ""
-    if valid_periods < 3:
+    if len(filtered_consumptions) < 3:
         warning = "(мало данных, риск неправильного расчета)"
+    elif anomalies_found > 0:
+        warning = f"(исключено {anomalies_found} аномальных дней)"
 
     return avg_consumption, total_days, warning
 
