@@ -18,10 +18,7 @@ def get_main_menu(is_private_chat: bool = True) -> ReplyKeyboardMarkup:
         keyboard = ReplyKeyboardMarkup(
             keyboard=[
                 [
-                    KeyboardButton(
-                        text="📝 Ввод остатков",
-                        web_app=WebAppInfo(url=web_app_url)
-                    ),
+                    KeyboardButton(text="📈 Средний расход"),
                     KeyboardButton(text="📦 Текущие остатки"),
                 ],
                 [
@@ -34,9 +31,6 @@ def get_main_menu(is_private_chat: bool = True) -> ReplyKeyboardMarkup:
                 ],
                 [
                     KeyboardButton(text="📜 История склада"),
-                    KeyboardButton(text="📈 Средний расход"),
-                ],
-                [
                     KeyboardButton(text="🧪 Тестовый отчёт"),
                 ],
             ],
