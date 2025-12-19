@@ -11,6 +11,76 @@ from aiogram import Bot
 logger = logging.getLogger(__name__)
 
 
+async def send_auto_purchase_order(bot: Bot):
+    """
+    Автоматически рассчитать и отправить заказ на закуп (если сумма >= 500,000₸)
+    Отправляется в 12:00 по Астане
+    """
+    try:
+        from database_pg import DatabasePG
+        from utils.calculations import get_auto_order_with_threshold, format_auto_order_list
+        from handlers.orders import prepare_order_data
+
+        database_url = os.getenv('DATABASE_URL')
+        if not database_url:
+            logger.warning("⚠️ DATABASE_URL не установлен")
+            return
+
+        db = DatabasePG(database_url)
+        await db.init_db()
+
+        logger.info("🔍 Рассчитываю автоматический заказ на 14 дней...")
+
+        # Подготавливаем данные (аналогично ручному расчету)
+        stock_data = await prepare_order_data(db)
+
+        # Получаем заказ с порогом 500,000₸
+        products_to_order, total_cost, should_notify = get_auto_order_with_threshold(
+            stock_data,
+            order_days=14,
+            threshold_amount=500000
+        )
+
+        if not should_notify:
+            logger.info(
+                f"💰 Сумма заказа ({total_cost:,.0f}₸) меньше порога (500,000₸). "
+                f"Уведомление не отправляется."
+            )
+            await db.close()
+            return
+
+        # Формируем сообщение
+        order_text = format_auto_order_list(products_to_order, total_cost)
+
+        # Отправляем всем активным пользователям
+        user_ids = await db.get_all_active_users()
+        logger.info(f"📢 Отправка заказа {len(user_ids)} пользователям...")
+
+        success_count = 0
+        for user_id in user_ids:
+            try:
+                await bot.send_message(
+                    chat_id=user_id,
+                    text=order_text,
+                    parse_mode="HTML"
+                )
+                success_count += 1
+            except Exception as e:
+                logger.error(f"❌ Ошибка отправки пользователю {user_id}: {e}")
+
+        logger.info(
+            f"✅ Автоматический заказ (сумма: {total_cost:,.0f}₸) "
+            f"отправлен {success_count}/{len(user_ids)} пользователям"
+        )
+
+        await db.close()
+
+    except Exception as e:
+        logger.error(f"❌ Ошибка в send_auto_purchase_order: {e}")
+        import traceback
+        traceback.print_exc()
+
+
 async def check_and_send_reminder(bot: Bot, group_chat_id: str, reminder_type: str):
     """
     Проверить введены ли остатки сегодня, если нет - отправить напоминание
@@ -144,5 +214,17 @@ def setup_scheduler(bot: Bot) -> AsyncIOScheduler:
         logger.info(f"📅 {name} настроено для чата {group_chat_id}")
 
     logger.info("📱 Личные напоминания будут отправлены всем зарегистрированным пользователям бота")
+
+    # Добавляем автоматический расчет заказа на 12:00
+    scheduler.add_job(
+        send_auto_purchase_order,
+        trigger=CronTrigger(hour=12, minute=0, timezone="Asia/Almaty"),
+        args=[bot],
+        id='auto_purchase_order',
+        name='Автоматический заказ на закуп (12:00)',
+        replace_existing=True
+    )
+    logger.info("📦 Автоматический расчет заказа настроен на 12:00 (Астана)")
+    logger.info("   Порог отправки: 500,000₸ | Расчет на 14 дней | Округление по правилу 0.2")
 
     return scheduler

@@ -72,3 +72,45 @@ async def cmd_order14(message: Message, db: Database):
 async def cmd_order7(message: Message, db: Database):
     """Заказ на 7 дней"""
     await generate_order(message, db, days=7, threshold=5)
+
+
+@router.message(Command("test_auto_order"))
+async def cmd_test_auto_order(message: Message, db: Database):
+    """
+    Тестовая команда: проверить автоматический заказ с порогом 500,000₸
+    """
+    await message.answer("🧪 Тестирую автоматический заказ...")
+
+    try:
+        from utils.calculations import get_auto_order_with_threshold, format_auto_order_list
+
+        # Подготавливаем данные
+        stock_data = await prepare_order_data(db)
+
+        # Получаем заказ с порогом
+        products_to_order, total_cost, should_notify = get_auto_order_with_threshold(
+            stock_data,
+            order_days=14,
+            threshold_amount=500000
+        )
+
+        # Формируем ответ
+        if not should_notify:
+            response = (
+                f"💰 Сумма заказа: <b>{total_cost:,.0f}₸</b>\n\n"
+                f"⚠️ Порог не достигнут (минимум: 500,000₸)\n"
+                f"Уведомление не будет отправлено автоматически.\n\n"
+                f"Товаров для закупа: {len(products_to_order)}"
+            )
+            await message.answer(response, parse_mode="HTML")
+            return
+
+        # Отправляем список заказа
+        order_text = format_auto_order_list(products_to_order, total_cost)
+        await message.answer(
+            f"✅ Порог достигнут! Уведомление будет отправлено.\n\n{order_text}",
+            parse_mode="HTML"
+        )
+
+    except Exception as e:
+        await message.answer(f"❌ Ошибка: {str(e)}", parse_mode="HTML")

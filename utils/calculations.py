@@ -118,29 +118,66 @@ def days_until_stockout(current_stock: float, avg_daily_consumption: float) -> i
     return int(days)
 
 
+def round_boxes_02_rule(boxes_decimal: float) -> int:
+    """
+    Округление коробок по правилу 0.2:
+    - Если дробная часть <= 0.2 → округляем вниз
+    - Если дробная часть > 0.2 → округляем вверх
+
+    Примеры:
+    - 1.2 → 1
+    - 1.201 → 2
+    - 1.19 → 1
+    - 1.5 → 2
+    """
+    import math
+    integer_part = int(boxes_decimal)
+    fractional_part = boxes_decimal - integer_part
+
+    if fractional_part <= 0.2:
+        return integer_part
+    else:
+        return integer_part + 1
+
+
 def calculate_order_quantity(avg_daily_consumption: float, days: int,
-                            current_stock: float, box_weight: float) -> Tuple[float, int]:
+                            current_stock: float, box_weight: float,
+                            use_02_rule: bool = False) -> Tuple[float, int]:
     """
     Рассчитать количество для заказа
     Возвращает: (вес в кг, количество коробок)
+
+    Args:
+        avg_daily_consumption: средний расход в день
+        days: на сколько дней заказывать
+        current_stock: текущий остаток
+        box_weight: вес одной коробки
+        use_02_rule: использовать правило округления 0.2
     """
     required_weight = avg_daily_consumption * days
     needed_weight = max(0, required_weight - current_stock)
 
-    boxes = int(needed_weight / box_weight)
-    if needed_weight % box_weight > 0:
-        boxes += 1  # округляем вверх
+    boxes_decimal = needed_weight / box_weight
+
+    if use_02_rule:
+        boxes = round_boxes_02_rule(boxes_decimal)
+    else:
+        # Стандартное округление вверх
+        boxes = int(boxes_decimal)
+        if needed_weight % box_weight > 0:
+            boxes += 1
 
     return needed_weight, boxes
 
 
 def get_products_to_order(stock_data: List[Dict], days_threshold: int = 7,
-                          order_days: int = 14) -> List[Dict]:
+                          order_days: int = 14, use_02_rule: bool = False) -> List[Dict]:
     """
     Получить список товаров для заказа
     stock_data: текущие остатки с историей расхода
     days_threshold: заказывать если осталось меньше N дней
     order_days: заказывать на N дней вперед
+    use_02_rule: использовать правило округления 0.2
     """
     products_to_order = []
 
@@ -151,7 +188,8 @@ def get_products_to_order(stock_data: List[Dict], days_threshold: int = 7,
 
         if days_left <= days_threshold:
             needed_weight, boxes = calculate_order_quantity(
-                avg_consumption, order_days, current_stock, item['box_weight']
+                avg_consumption, order_days, current_stock, item['box_weight'],
+                use_02_rule=use_02_rule
             )
 
             products_to_order.append({
@@ -164,6 +202,7 @@ def get_products_to_order(stock_data: List[Dict], days_threshold: int = 7,
                 'needed_weight': needed_weight,
                 'boxes_to_order': boxes,
                 'order_cost': boxes * item['price_per_box'],
+                'box_weight': item['box_weight'],
                 'urgency': 'СРОЧНО' if days_left <= 3 else 'Скоро',
                 'unit': item.get('unit', 'кг')
             })
@@ -200,6 +239,67 @@ def format_order_list(products: List[Dict]) -> str:
     lines.append(f"\n💰 <b>Общая сумма заказа: {total_cost:,.0f}₸</b>")
 
     return "\n".join(lines)
+
+
+def format_auto_order_list(products: List[Dict], total_cost: float) -> str:
+    """
+    Форматировать автоматический список заказа с общим весом
+    """
+    if not products:
+        return "✅ Все товары в наличии, заказывать ничего не нужно!"
+
+    # Рассчитываем общий вес
+    total_weight = sum(p['boxes_to_order'] * p['box_weight'] for p in products)
+
+    lines = ["🛒 <b>АВТОМАТИЧЕСКАЯ ЗАЯВКА НА ЗАКУП (на 14 дней)</b>\n"]
+
+    for i, p in enumerate(products, 1):
+        urgency_icon = "🚨" if p['urgency'] == 'СРОЧНО' else "⚠️"
+        unit = p.get('unit', 'кг')
+
+        lines.append(
+            f"{i}. {urgency_icon} <b>{p['name_russian']}</b>\n"
+            f"   Осталось: {p['current_stock']:.1f} {unit} (на {p['days_left']} дн.)\n"
+            f"   📦 Заказать: <b>{p['boxes_to_order']} коробок</b>\n"
+            f"   💰 Сумма: {p['order_cost']:,.0f}₸\n"
+        )
+
+    lines.append(f"\n━━━━━━━━━━━━━━━━━━")
+    lines.append(f"💰 <b>Общая сумма: {total_cost:,.0f}₸</b>")
+    lines.append(f"⚖️ <b>Общий вес: {total_weight:,.1f} кг</b>")
+
+    return "\n".join(lines)
+
+
+def get_auto_order_with_threshold(stock_data: List[Dict],
+                                   order_days: int = 14,
+                                   threshold_amount: float = 500000) -> Tuple[List[Dict], float, bool]:
+    """
+    Получить автоматический заказ с порогом суммы
+
+    Args:
+        stock_data: данные об остатках
+        order_days: на сколько дней заказывать (по умолчанию 14)
+        threshold_amount: минимальная сумма заказа для отправки уведомления (по умолчанию 500,000₸)
+
+    Returns:
+        (список товаров для заказа, общая сумма, отправлять ли уведомление)
+    """
+    # Рассчитываем товары для заказа с правилом округления 0.2
+    products_to_order = get_products_to_order(
+        stock_data,
+        days_threshold=order_days,  # Если остатка < чем на 14 дней → включаем в закуп
+        order_days=order_days,
+        use_02_rule=True
+    )
+
+    # Считаем общую сумму
+    total_cost = sum(p['order_cost'] for p in products_to_order)
+
+    # Определяем, нужно ли отправлять уведомление
+    should_notify = total_cost >= threshold_amount
+
+    return products_to_order, total_cost, should_notify
 
 
 def calculate_daily_cost(consumption_data: List[Dict]) -> Tuple[float, str]:
