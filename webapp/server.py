@@ -214,23 +214,43 @@ async def get_yesterday_stock(request):
 
 
 async def get_today_supplies(request):
-    """API: Получить поставки на сегодняшний рабочий день"""
+    """API: Получить поставки между последней датой остатков и сегодня"""
     try:
         # Определяем текущий рабочий день
         working_date_str = get_working_date()
         date_obj = datetime.strptime(working_date_str, '%Y-%m-%d').date()
 
-        # Получаем поставки на эту дату
+        # Получаем поставки между последней датой остатков и текущей датой
         async with db.pool.acquire() as conn:
+            # Находим последнюю дату с остатками (вчерашнюю)
+            latest_previous_date = await conn.fetchval("""
+                SELECT MAX(date)
+                FROM stock
+                WHERE date < $1
+            """, date_obj)
+
+            if not latest_previous_date:
+                # Нет предыдущих данных, берем поставки только на сегодня
+                start_date = date_obj
+            else:
+                # Берем поставки начиная со следующего дня после последних остатков
+                from datetime import timedelta
+                start_date = latest_previous_date + timedelta(days=1)
+
+            print(f"📦 Загрузка поставок с {start_date} по {date_obj}")
+
+            # Получаем поставки за период
             supplies = await conn.fetch("""
-                SELECT s.product_id, s.boxes, s.weight,
+                SELECT s.product_id, s.boxes, s.date,
                        p.units_per_box, p.package_weight
                 FROM supplies s
                 JOIN products p ON s.product_id = p.id
-                WHERE s.date = $1
-            """, date_obj)
+                WHERE s.date >= $1 AND s.date <= $2
+            """, start_date, date_obj)
 
-            # Группируем поставки по product_id (может быть несколько поставок одного товара)
+            print(f"📦 Найдено {len(supplies)} записей поставок")
+
+            # Группируем поставки по product_id (суммируем все за период)
             supplies_dict = {}
             for supply in supplies:
                 product_id = supply['product_id']
@@ -241,13 +261,21 @@ async def get_today_supplies(request):
                 else:
                     supplies_dict[product_id] = packages
 
+            print(f"📦 Сгруппированные поставки: {supplies_dict}")
+
             return web.json_response({
                 'supplies': supplies_dict,
-                'working_date': working_date_str
+                'working_date': working_date_str,
+                'period': {
+                    'from': start_date.isoformat(),
+                    'to': date_obj.isoformat()
+                }
             })
 
     except Exception as e:
         print(f"Ошибка получения поставок: {e}")
+        import traceback
+        traceback.print_exc()
         return web.json_response({'error': str(e)}, status=500)
 
 
