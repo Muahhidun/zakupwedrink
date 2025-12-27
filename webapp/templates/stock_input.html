@@ -218,6 +218,7 @@
         let workingDate = '';
         let yesterdayStock = {};  // Мапа product_id -> quantity вчерашних остатков
         let yesterdayDate = null;
+        let todaySupplies = {};   // Мапа product_id -> quantity поставок на сегодня
 
         // API базовый URL
         const API_URL = window.location.origin;
@@ -314,6 +315,23 @@
             }
         }
 
+        // Загрузка поставок на сегодня
+        async function loadTodaySupplies() {
+            try {
+                const response = await fetch(`${API_URL}/api/supplies/today`);
+                const data = await response.json();
+
+                // Получаем мапу product_id -> quantity поставок
+                if (data.supplies) {
+                    todaySupplies = data.supplies;
+                    console.log('📦 Загружены поставки:', todaySupplies);
+                }
+            } catch (error) {
+                console.error('Ошибка загрузки поставок:', error);
+                // Не блокируем работу если поставок нет
+            }
+        }
+
         // Загрузка списка товаров
         async function loadProducts() {
             try {
@@ -329,18 +347,25 @@
         // Пересчёт расхода для товара
         function updateConsumption(productId) {
             const yesterday = yesterdayStock[productId] || 0;
+            const supply = todaySupplies[productId] || 0;  // Поставка на сегодня
             const input = document.getElementById(`qty-${productId}`);
             const today = parseFloat(input.value) || 0;
 
-            const consumption = yesterday - today;
+            // Ожидаемый остаток = вчерашний + поставка
+            const expected = yesterday + supply;
+
+            // Реальный расход = ожидаемый - текущий
+            const consumption = expected - today;
             const consumptionEl = document.getElementById(`consumption-${productId}`);
 
             if (!consumptionEl) return;
 
             if (consumption > 0) {
+                // Расход (красный)
                 consumptionEl.textContent = `-${consumption.toFixed(1)}`;
                 consumptionEl.className = 'consumption-value consumption-positive';
             } else if (consumption < 0) {
+                // Прирост (зеленый) - должно быть редко если учитываем поставки
                 consumptionEl.textContent = `+${Math.abs(consumption).toFixed(1)}`;
                 consumptionEl.className = 'consumption-value consumption-negative';
             } else {
@@ -460,6 +485,7 @@
         async function init() {
             await checkExistingData();
             await loadYesterdayStock();  // Загружаем вчерашние данные
+            await loadTodaySupplies();   // Загружаем поставки на сегодня
             await loadProducts();
         }
 

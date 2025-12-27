@@ -213,6 +213,44 @@ async def get_yesterday_stock(request):
         return web.json_response({'error': str(e)}, status=500)
 
 
+async def get_today_supplies(request):
+    """API: Получить поставки на сегодняшний рабочий день"""
+    try:
+        # Определяем текущий рабочий день
+        working_date_str = get_working_date()
+        date_obj = datetime.strptime(working_date_str, '%Y-%m-%d').date()
+
+        # Получаем поставки на эту дату
+        async with db.pool.acquire() as conn:
+            supplies = await conn.fetch("""
+                SELECT s.product_id, s.boxes, s.weight,
+                       p.units_per_box, p.package_weight
+                FROM supplies s
+                JOIN products p ON s.product_id = p.id
+                WHERE s.date = $1
+            """, date_obj)
+
+            # Группируем поставки по product_id (может быть несколько поставок одного товара)
+            supplies_dict = {}
+            for supply in supplies:
+                product_id = supply['product_id']
+                packages = supply['boxes'] * supply['units_per_box']
+
+                if product_id in supplies_dict:
+                    supplies_dict[product_id] += packages
+                else:
+                    supplies_dict[product_id] = packages
+
+            return web.json_response({
+                'supplies': supplies_dict,
+                'working_date': working_date_str
+            })
+
+    except Exception as e:
+        print(f"Ошибка получения поставок: {e}")
+        return web.json_response({'error': str(e)}, status=500)
+
+
 def create_app():
     """Создать приложение aiohttp"""
     app = web.Application()
@@ -234,6 +272,7 @@ def create_app():
     app.router.add_get('/api/stock/check', check_stock_exists)
     app.router.add_get('/api/stock/yesterday', get_yesterday_stock)
     app.router.add_get('/api/stock/{date}', get_stock_for_date)
+    app.router.add_get('/api/supplies/today', get_today_supplies)
 
     # Применяем CORS ко всем роутам
     for route in list(app.router.routes()):
