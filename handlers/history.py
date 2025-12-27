@@ -123,6 +123,56 @@ async def history_callback(callback: CallbackQuery, db: Database):
     else:
         lines.append("❌ Поставок не было")
 
+    # Рассчитываем предполагаемые остатки с учетом поставок
+    if supplies:
+        lines.append("\n<b>📦 ПРЕДПОЛАГАЕМЫЕ ОСТАТКИ</b> (с учетом поставок)\n")
+
+        # Создаем словарь остатков по product_id для быстрого доступа
+        stock_dict = {item['product_id']: item for item in stocks}
+
+        # Создаем словарь поставок по product_id (суммируем если несколько поставок одного товара)
+        supply_dict = {}
+        for s in supplies:
+            product_id = s['product_id']
+            packages = s['boxes'] * s['units_per_box']
+            weight = s['weight']
+
+            if product_id in supply_dict:
+                supply_dict[product_id]['packages'] += packages
+                supply_dict[product_id]['weight'] += weight
+            else:
+                supply_dict[product_id] = {
+                    'packages': packages,
+                    'weight': weight,
+                    'name_russian': s['name_russian'],
+                    'unit': s.get('unit', 'кг')
+                }
+
+        # Рассчитываем и показываем предполагаемые остатки для товаров с поставками
+        for product_id, supply in supply_dict.items():
+            stock = stock_dict.get(product_id)
+
+            if stock:
+                # Есть остаток - прибавляем поставку
+                new_quantity = stock['quantity'] + supply['packages']
+                new_weight = stock['weight'] + supply['weight']
+            else:
+                # Нет остатка - поставка становится новым остатком
+                new_quantity = supply['packages']
+                new_weight = supply['weight']
+
+            unit = supply['unit']
+            if unit == 'шт':
+                lines.append(
+                    f"• {supply['name_russian']}: "
+                    f"<b>{new_quantity:.0f} шт.</b>"
+                )
+            else:
+                lines.append(
+                    f"• {supply['name_russian']}: "
+                    f"<b>{new_quantity:.0f} уп.</b> ({new_weight:.1f} кг)"
+                )
+
     text = "\n".join(lines)
 
     # Отправляем как новое сообщение
