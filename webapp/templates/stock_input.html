@@ -385,7 +385,10 @@
 
                 const weight = parseFloat(product.package_weight).toFixed(2);
                 const yesterday = yesterdayStock[product.id] || 0;
-                const yesterdayDisplay = yesterday > 0 ? yesterday.toFixed(1) : '-';
+                const supply = todaySupplies[product.id] || 0;
+                // Показываем ожидаемый остаток (вчера + поставка)
+                const expectedStock = yesterday + supply;
+                const yesterdayDisplay = expectedStock > 0 ? expectedStock.toFixed(1) : '-';
 
                 row.innerHTML = `
                     <div class="product-info">
