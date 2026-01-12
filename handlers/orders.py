@@ -3,7 +3,7 @@
 """
 from aiogram import Router, F
 from aiogram.filters import Command
-from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, WebAppInfo
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from database import Database
@@ -12,12 +12,13 @@ from utils.calculations import (
     calculate_average_consumption,
     days_until_stockout,
     get_products_to_order,
-    format_order_list,
-    format_editable_order_list,
-    format_edit_item_menu
+    format_order_list
 )
 
 router = Router()
+
+import os
+import json
 
 
 class OrderStates(StatesGroup):
@@ -72,16 +73,40 @@ async def generate_order(message: Message, db: Database, days: int,
         )
         return
 
-    # Используем редактируемый формат с inline кнопками
-    order_text, keyboard = format_editable_order_list(products_to_order)
+    # Формируем обычный список текстом
+    order_text = format_order_list(products_to_order)
 
-    # Сохраняем данные заказа в state для последующего редактирования
+    # Сохраняем данные заказа в state
     if state:
         await state.update_data(
             products_to_order=products_to_order,
             order_days=days
         )
         await state.set_state(OrderStates.waiting_for_save)
+
+    # Создаем данные для передачи в WebApp
+    import json
+    import base64
+    order_data = {
+        'products': products_to_order,
+        'order_days': days
+    }
+    order_json = json.dumps(order_data, ensure_ascii=False)
+    order_base64 = base64.b64encode(order_json.encode('utf-8')).decode('utf-8')
+
+    # URL мини-аппа
+    web_app_url = os.getenv('WEB_APP_URL', 'http://localhost:5000')
+    webapp_url = f"{web_app_url}/order_edit?tgWebAppStartParam=order_{order_base64}"
+
+    # Кнопки: редактировать в приложении или сохранить как есть
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text="✏️ Редактировать заказ",
+            web_app=WebAppInfo(url=webapp_url)
+        )],
+        [InlineKeyboardButton(text="💾 Сохранить как есть", callback_data="save_edited_order")],
+        [InlineKeyboardButton(text="📋 Активные заказы", callback_data="view_pending_orders")]
+    ])
 
     await message.answer(
         order_text,
@@ -111,166 +136,6 @@ async def cmd_order30(message: Message, db: Database, state: FSMContext):
     await generate_order(message, db, days=30, threshold=30, state=state)
 
 
-@router.callback_query(F.data.startswith("edit_item_"))
-async def callback_edit_item(callback: CallbackQuery, db: Database, state: FSMContext):
-    """Показать меню редактирования товара"""
-    try:
-        product_id = int(callback.data.split("_")[2])
-        data = await state.get_data()
-        products_to_order = data.get('products_to_order', [])
-
-        # Находим товар
-        product = None
-        index = 0
-        for i, p in enumerate(products_to_order, 1):
-            if p['product_id'] == product_id:
-                product = p
-                index = i
-                break
-
-        if not product:
-            await callback.answer("❌ Товар не найден", show_alert=True)
-            return
-
-        # Показываем меню редактирования
-        text, keyboard = format_edit_item_menu(product, index)
-        await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
-        await callback.answer()
-
-    except Exception as e:
-        await callback.answer(f"❌ Ошибка: {str(e)}", show_alert=True)
-
-
-@router.callback_query(F.data == "back_to_order_list")
-async def callback_back_to_list(callback: CallbackQuery, db: Database, state: FSMContext):
-    """Вернуться к списку заказа"""
-    try:
-        data = await state.get_data()
-        products_to_order = data.get('products_to_order', [])
-
-        if products_to_order:
-            order_text, keyboard = format_editable_order_list(products_to_order)
-            await callback.message.edit_text(order_text, reply_markup=keyboard, parse_mode="HTML")
-        else:
-            await callback.message.edit_text("✅ Все товары удалены из заказа", parse_mode="HTML")
-
-        await callback.answer()
-
-    except Exception as e:
-        await callback.answer(f"❌ Ошибка: {str(e)}", show_alert=True)
-
-
-@router.callback_query(F.data.startswith("edit_dec_"))
-async def callback_edit_decrease(callback: CallbackQuery, db: Database, state: FSMContext):
-    """Уменьшить количество коробок на 1"""
-    try:
-        product_id = int(callback.data.split("_")[2])
-        data = await state.get_data()
-        products_to_order = data.get('products_to_order', [])
-
-        # Находим товар и уменьшаем количество
-        product = None
-        index = 0
-        for i, p in enumerate(products_to_order, 1):
-            if p['product_id'] == product_id:
-                if p['boxes_to_order'] > 1:
-                    p['boxes_to_order'] -= 1
-                    p['needed_weight'] = p['boxes_to_order'] * p['box_weight']
-                    p['order_cost'] = p['boxes_to_order'] * p['price_per_box']
-                    product = p
-                    index = i
-                else:
-                    # Если было 1, то удаляем товар и возвращаемся к списку
-                    products_to_order.remove(p)
-                    await state.update_data(products_to_order=products_to_order)
-
-                    if products_to_order:
-                        order_text, keyboard = format_editable_order_list(products_to_order)
-                        await callback.message.edit_text(order_text, reply_markup=keyboard, parse_mode="HTML")
-                        await callback.answer("✅ Товар удален")
-                    else:
-                        await callback.message.edit_text("✅ Все товары удалены из заказа", parse_mode="HTML")
-                        await state.clear()
-                        await callback.answer()
-                    return
-                break
-
-        # Обновляем state
-        await state.update_data(products_to_order=products_to_order)
-
-        # Обновляем меню редактирования товара
-        if product:
-            text, keyboard = format_edit_item_menu(product, index)
-            await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
-            await callback.answer()
-
-    except Exception as e:
-        await callback.answer(f"❌ Ошибка: {str(e)}", show_alert=True)
-
-
-@router.callback_query(F.data.startswith("edit_inc_"))
-async def callback_edit_increase(callback: CallbackQuery, db: Database, state: FSMContext):
-    """Увеличить количество коробок на 1"""
-    try:
-        product_id = int(callback.data.split("_")[2])
-        data = await state.get_data()
-        products_to_order = data.get('products_to_order', [])
-
-        # Находим товар и увеличиваем количество
-        product = None
-        index = 0
-        for i, p in enumerate(products_to_order, 1):
-            if p['product_id'] == product_id:
-                p['boxes_to_order'] += 1
-                p['needed_weight'] = p['boxes_to_order'] * p['box_weight']
-                p['order_cost'] = p['boxes_to_order'] * p['price_per_box']
-                product = p
-                index = i
-                break
-
-        # Обновляем state
-        await state.update_data(products_to_order=products_to_order)
-
-        # Обновляем меню редактирования товара
-        if product:
-            text, keyboard = format_edit_item_menu(product, index)
-            await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
-            await callback.answer()
-
-    except Exception as e:
-        await callback.answer(f"❌ Ошибка: {str(e)}", show_alert=True)
-
-
-@router.callback_query(F.data.startswith("edit_del_"))
-async def callback_edit_delete(callback: CallbackQuery, db: Database, state: FSMContext):
-    """Удалить товар из заказа"""
-    try:
-        product_id = int(callback.data.split("_")[2])
-        data = await state.get_data()
-        products_to_order = data.get('products_to_order', [])
-
-        # Удаляем товар
-        products_to_order = [p for p in products_to_order if p['product_id'] != product_id]
-
-        # Обновляем state
-        await state.update_data(products_to_order=products_to_order)
-
-        # Возвращаемся к списку заказа
-        if products_to_order:
-            order_text, keyboard = format_editable_order_list(products_to_order)
-            await callback.message.edit_text(order_text, reply_markup=keyboard, parse_mode="HTML")
-            await callback.answer("✅ Товар удален")
-        else:
-            await callback.message.edit_text(
-                "✅ Все товары удалены из заказа.\n\n"
-                "Заказ не будет сохранен.",
-                parse_mode="HTML"
-            )
-            await state.clear()
-            await callback.answer()
-
-    except Exception as e:
-        await callback.answer(f"❌ Ошибка: {str(e)}", show_alert=True)
 
 
 @router.callback_query(F.data == "save_edited_order")
@@ -318,6 +183,59 @@ async def callback_save_order(callback: CallbackQuery, db: Database, state: FSMC
 
     except Exception as e:
         await callback.answer(f"❌ Ошибка: {str(e)}", show_alert=True)
+
+
+@router.message(F.web_app_data)
+async def handle_webapp_data(message: Message, db: Database, state: FSMContext):
+    """Обработчик данных из WebApp (отредактированный заказ)"""
+    try:
+        # Получаем данные из WebApp
+        webapp_data = json.loads(message.web_app_data.data)
+
+        if webapp_data.get('action') == 'save_order':
+            products_to_order = webapp_data.get('products', [])
+            order_days = webapp_data.get('order_days', 14)
+
+            if not products_to_order:
+                await message.answer("⚠️ Заказ пуст. Ничего не сохранено.")
+                await state.clear()
+                return
+
+            # Создаем заказ в БД
+            total_cost = sum(p['order_cost'] for p in products_to_order)
+            notes = f"Заказ на {order_days} дней, {len(products_to_order)} позиций (отредактирован в WebApp)"
+
+            order_id = await db.create_pending_order(total_cost, notes)
+
+            # Добавляем товары в заказ
+            for product in products_to_order:
+                await db.add_item_to_order(
+                    order_id=order_id,
+                    product_id=product['product_id'],
+                    boxes=product['boxes_to_order'],
+                    weight=product['needed_weight'],
+                    cost=product['order_cost']
+                )
+
+            # Очищаем state
+            await state.clear()
+
+            # Отправляем подтверждение
+            await message.answer(
+                f"✅ <b>Заказ #{order_id} сохранен!</b>\n\n"
+                f"📦 Позиций: {len(products_to_order)}\n"
+                f"💰 Сумма: {total_cost:,.0f}₸\n"
+                f"📅 На {order_days} дней\n\n"
+                f"Используйте /pending_orders для просмотра активных заказов.",
+                parse_mode="HTML",
+                reply_markup=get_main_menu()
+            )
+
+    except Exception as e:
+        await message.answer(f"❌ Ошибка сохранения заказа: {str(e)}")
+        print(f"Error handling webapp data: {e}")
+        import traceback
+        traceback.print_exc()
 
 
 @router.callback_query(F.data == "view_pending_orders")

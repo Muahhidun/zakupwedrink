@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Редактирование заказа</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: var(--tg-theme-bg-color, #ffffff);
+            color: var(--tg-theme-text-color, #000000);
+            padding: 12px;
+            padding-bottom: 80px;
+        }
+
+        h1 {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            text-align: center;
+        }
+
+        .order-info {
+            text-align: center;
+            color: var(--tg-theme-hint-color, #999);
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+
+        .total-cost {
+            background: var(--tg-theme-secondary-bg-color, #f4f4f5);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .total-cost-label {
+            font-size: 14px;
+            color: var(--tg-theme-hint-color, #999);
+            margin-bottom: 4px;
+        }
+
+        .total-cost-value {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--tg-theme-text-color);
+        }
+
+        .order-items {
+            margin-bottom: 20px;
+        }
+
+        .order-item {
+            background: var(--tg-theme-secondary-bg-color, #f4f4f5);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 12px;
+        }
+
+        .item-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            margin-bottom: 12px;
+        }
+
+        .item-name {
+            font-size: 16px;
+            font-weight: 600;
+            flex: 1;
+            padding-right: 12px;
+        }
+
+        .item-status {
+            font-size: 20px;
+        }
+
+        .item-details {
+            font-size: 14px;
+            color: var(--tg-theme-hint-color, #999);
+            margin-bottom: 12px;
+            line-height: 1.5;
+        }
+
+        .item-controls {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+
+        .quantity-control {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex: 1;
+        }
+
+        .quantity-btn {
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            border: none;
+            background-color: var(--tg-theme-button-color, #3390ec);
+            color: var(--tg-theme-button-text-color, #ffffff);
+            font-size: 24px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            transition: transform 0.1s, opacity 0.2s;
+        }
+
+        .quantity-btn:active {
+            transform: scale(0.95);
+        }
+
+        .quantity-btn:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+
+        .quantity-display {
+            flex: 1;
+            text-align: center;
+        }
+
+        .quantity-value {
+            font-size: 20px;
+            font-weight: 700;
+            display: block;
+        }
+
+        .quantity-label {
+            font-size: 12px;
+            color: var(--tg-theme-hint-color, #999);
+        }
+
+        .delete-btn {
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            border: none;
+            background-color: #ff3b30;
+            color: #ffffff;
+            font-size: 20px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            transition: transform 0.1s;
+        }
+
+        .delete-btn:active {
+            transform: scale(0.95);
+        }
+
+        .item-cost {
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid var(--tg-theme-section-separator-color, #e8e8e8);
+            text-align: right;
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--tg-theme-hint-color, #999);
+        }
+
+        .empty-state-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+        }
+
+        .empty-state-text {
+            font-size: 16px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            font-size: 16px;
+            color: var(--tg-theme-hint-color, #999);
+        }
+
+        /* Анимации */
+        @keyframes fadeOut {
+            from { opacity: 1; transform: scale(1); }
+            to { opacity: 0; transform: scale(0.9); }
+        }
+
+        .removing {
+            animation: fadeOut 0.3s ease-out forwards;
+        }
+    </style>
+</head>
+<body>
+    <h1>🛒 Редактирование заказа</h1>
+    <div class="order-info" id="orderInfo">Загрузка...</div>
+
+    <div class="total-cost">
+        <div class="total-cost-label">Общая сумма заказа</div>
+        <div class="total-cost-value" id="totalCost">0₸</div>
+    </div>
+
+    <div id="content">
+        <div class="loading">Загрузка заказа...</div>
+    </div>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.expand();
+        tg.enableClosingConfirmation();
+
+        let orderData = {
+            products: [],
+            order_days: 14
+        };
+
+        // Загружаем данные заказа
+        async function loadOrder() {
+            try {
+                // Получаем данные из initData (там должен быть order_id или весь заказ)
+                const initData = tg.initData;
+                const urlParams = new URLSearchParams(window.location.search);
+                const startParam = urlParams.get('tgWebAppStartParam');
+
+                // Данные заказа передаются через start_parameter при открытии WebApp
+                // Формат: order_DATA_BASE64
+                let orderJson;
+                if (startParam && startParam.startsWith('order_')) {
+                    const base64Data = startParam.substring(6);
+                    orderJson = atob(base64Data);
+                } else {
+                    throw new Error('Нет данных заказа');
+                }
+
+                orderData = JSON.parse(orderJson);
+
+                document.getElementById('orderInfo').textContent =
+                    `Заказ на ${orderData.order_days} дней • ${orderData.products.length} позиций`;
+
+                renderOrder();
+                updateTotal();
+                setupMainButton();
+            } catch (error) {
+                console.error('Ошибка загрузки заказа:', error);
+                document.getElementById('content').innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">❌</div>
+                        <div class="empty-state-text">Ошибка загрузки заказа<br>${error.message}</div>
+                    </div>
+                `;
+            }
+        }
+
+        function renderOrder() {
+            const content = document.getElementById('content');
+
+            if (orderData.products.length === 0) {
+                content.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📦</div>
+                        <div class="empty-state-text">Заказ пуст<br>Все товары удалены</div>
+                    </div>
+                `;
+                return;
+            }
+
+            const itemsHtml = orderData.products.map((product, index) => {
+                const urgencyIcon = product.urgency === 'СРОЧНО' ? '🚨' : '⚠️';
+                const unit = product.unit || 'кг';
+                const pendingInfo = product.pending_weight > 0
+                    ? ` + ${product.pending_weight.toFixed(1)} ${unit} в пути`
+                    : '';
+
+                return `
+                    <div class="order-item" id="item-${index}">
+                        <div class="item-header">
+                            <div class="item-name">${product.name_russian}</div>
+                            <div class="item-status">${urgencyIcon}</div>
+                        </div>
+                        <div class="item-details">
+                            Остаток: ${product.current_stock.toFixed(1)} ${unit}${pendingInfo}<br>
+                            Расход: ${product.avg_daily_consumption.toFixed(1)} ${unit}/день<br>
+                            Хватит на: ${product.days_left} дн.
+                        </div>
+                        <div class="item-controls">
+                            <div class="quantity-control">
+                                <button class="quantity-btn" onclick="decreaseQuantity(${index})" ${product.boxes_to_order <= 1 ? 'disabled' : ''}>−</button>
+                                <div class="quantity-display">
+                                    <span class="quantity-value" id="qty-${index}">${product.boxes_to_order}</span>
+                                    <span class="quantity-label">коробок</span>
+                                </div>
+                                <button class="quantity-btn" onclick="increaseQuantity(${index})">+</button>
+                            </div>
+                            <button class="delete-btn" onclick="deleteItem(${index})">🗑</button>
+                        </div>
+                        <div class="item-cost" id="cost-${index}">${formatCost(product.order_cost)}</div>
+                    </div>
+                `;
+            }).join('');
+
+            content.innerHTML = `<div class="order-items">${itemsHtml}</div>`;
+        }
+
+        function decreaseQuantity(index) {
+            if (orderData.products[index].boxes_to_order > 1) {
+                orderData.products[index].boxes_to_order--;
+                updateProduct(index);
+            }
+        }
+
+        function increaseQuantity(index) {
+            orderData.products[index].boxes_to_order++;
+            updateProduct(index);
+        }
+
+        function deleteItem(index) {
+            const item = document.getElementById(`item-${index}`);
+            item.classList.add('removing');
+
+            setTimeout(() => {
+                orderData.products.splice(index, 1);
+                renderOrder();
+                updateTotal();
+
+                if (orderData.products.length === 0) {
+                    tg.MainButton.setParams({
+                        text: 'Заказ пуст',
+                        is_active: false
+                    });
+                }
+            }, 300);
+        }
+
+        function updateProduct(index) {
+            const product = orderData.products[index];
+            product.needed_weight = product.boxes_to_order * product.box_weight;
+            product.order_cost = product.boxes_to_order * product.price_per_box;
+
+            // Обновляем UI
+            document.getElementById(`qty-${index}`).textContent = product.boxes_to_order;
+            document.getElementById(`cost-${index}`).textContent = formatCost(product.order_cost);
+
+            // Обновляем кнопку уменьшения
+            const decreaseBtn = document.querySelectorAll('.quantity-btn')[index * 2];
+            decreaseBtn.disabled = product.boxes_to_order <= 1;
+
+            updateTotal();
+        }
+
+        function updateTotal() {
+            const total = orderData.products.reduce((sum, p) => sum + p.order_cost, 0);
+            document.getElementById('totalCost').textContent = formatCost(total);
+        }
+
+        function formatCost(cost) {
+            return cost.toLocaleString('ru-RU') + '₸';
+        }
+
+        function setupMainButton() {
+            tg.MainButton.setParams({
+                text: '💾 Сохранить заказ',
+                color: tg.themeParams.button_color || '#3390ec',
+                is_active: orderData.products.length > 0,
+                is_visible: true
+            });
+
+            tg.MainButton.onClick(saveOrder);
+        }
+
+        function saveOrder() {
+            tg.MainButton.showProgress();
+
+            // Отправляем данные обратно в бота
+            tg.sendData(JSON.stringify({
+                action: 'save_order',
+                products: orderData.products,
+                order_days: orderData.order_days
+            }));
+        }
+
+        // Загружаем заказ при открытии
+        loadOrder();
+    </script>
+</body>
+</html>

@@ -45,6 +45,14 @@ async def index(request):
     return web.Response(text=html_content, content_type='text/html')
 
 
+async def order_edit(request):
+    """Страница редактирования заказа"""
+    html_path = Path(__file__).parent / 'templates' / 'order_edit.html'
+    with open(html_path, 'r', encoding='utf-8') as f:
+        html_content = f.read()
+    return web.Response(text=html_content, content_type='text/html')
+
+
 async def get_products(request):
     """API: Получить список всех товаров"""
     try:
@@ -294,6 +302,7 @@ def create_app():
 
     # Роуты
     app.router.add_get('/', index)
+    app.router.add_get('/order_edit', order_edit)
     app.router.add_get('/api/products', get_products)
     app.router.add_post('/api/stock', save_stock)
     app.router.add_get('/api/stock/latest', get_latest_stock)
