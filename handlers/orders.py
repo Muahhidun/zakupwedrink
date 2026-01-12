@@ -13,7 +13,8 @@ from utils.calculations import (
     days_until_stockout,
     get_products_to_order,
     format_order_list,
-    format_editable_order_list
+    format_editable_order_list,
+    format_edit_item_menu
 )
 
 router = Router()
@@ -110,6 +111,55 @@ async def cmd_order30(message: Message, db: Database, state: FSMContext):
     await generate_order(message, db, days=30, threshold=30, state=state)
 
 
+@router.callback_query(F.data.startswith("edit_item_"))
+async def callback_edit_item(callback: CallbackQuery, db: Database, state: FSMContext):
+    """Показать меню редактирования товара"""
+    try:
+        product_id = int(callback.data.split("_")[2])
+        data = await state.get_data()
+        products_to_order = data.get('products_to_order', [])
+
+        # Находим товар
+        product = None
+        index = 0
+        for i, p in enumerate(products_to_order, 1):
+            if p['product_id'] == product_id:
+                product = p
+                index = i
+                break
+
+        if not product:
+            await callback.answer("❌ Товар не найден", show_alert=True)
+            return
+
+        # Показываем меню редактирования
+        text, keyboard = format_edit_item_menu(product, index)
+        await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+        await callback.answer()
+
+    except Exception as e:
+        await callback.answer(f"❌ Ошибка: {str(e)}", show_alert=True)
+
+
+@router.callback_query(F.data == "back_to_order_list")
+async def callback_back_to_list(callback: CallbackQuery, db: Database, state: FSMContext):
+    """Вернуться к списку заказа"""
+    try:
+        data = await state.get_data()
+        products_to_order = data.get('products_to_order', [])
+
+        if products_to_order:
+            order_text, keyboard = format_editable_order_list(products_to_order)
+            await callback.message.edit_text(order_text, reply_markup=keyboard, parse_mode="HTML")
+        else:
+            await callback.message.edit_text("✅ Все товары удалены из заказа", parse_mode="HTML")
+
+        await callback.answer()
+
+    except Exception as e:
+        await callback.answer(f"❌ Ошибка: {str(e)}", show_alert=True)
+
+
 @router.callback_query(F.data.startswith("edit_dec_"))
 async def callback_edit_decrease(callback: CallbackQuery, db: Database, state: FSMContext):
     """Уменьшить количество коробок на 1"""
@@ -119,28 +169,40 @@ async def callback_edit_decrease(callback: CallbackQuery, db: Database, state: F
         products_to_order = data.get('products_to_order', [])
 
         # Находим товар и уменьшаем количество
-        for product in products_to_order:
-            if product['product_id'] == product_id:
-                if product['boxes_to_order'] > 1:
-                    product['boxes_to_order'] -= 1
-                    product['needed_weight'] = product['boxes_to_order'] * product['box_weight']
-                    product['order_cost'] = product['boxes_to_order'] * product['price_per_box']
+        product = None
+        index = 0
+        for i, p in enumerate(products_to_order, 1):
+            if p['product_id'] == product_id:
+                if p['boxes_to_order'] > 1:
+                    p['boxes_to_order'] -= 1
+                    p['needed_weight'] = p['boxes_to_order'] * p['box_weight']
+                    p['order_cost'] = p['boxes_to_order'] * p['price_per_box']
+                    product = p
+                    index = i
                 else:
-                    # Если было 1, то удаляем товар
-                    products_to_order.remove(product)
+                    # Если было 1, то удаляем товар и возвращаемся к списку
+                    products_to_order.remove(p)
+                    await state.update_data(products_to_order=products_to_order)
+
+                    if products_to_order:
+                        order_text, keyboard = format_editable_order_list(products_to_order)
+                        await callback.message.edit_text(order_text, reply_markup=keyboard, parse_mode="HTML")
+                        await callback.answer("✅ Товар удален")
+                    else:
+                        await callback.message.edit_text("✅ Все товары удалены из заказа", parse_mode="HTML")
+                        await state.clear()
+                        await callback.answer()
+                    return
                 break
 
         # Обновляем state
         await state.update_data(products_to_order=products_to_order)
 
-        # Обновляем сообщение
-        if products_to_order:
-            order_text, keyboard = format_editable_order_list(products_to_order)
-            await callback.message.edit_text(order_text, reply_markup=keyboard, parse_mode="HTML")
-        else:
-            await callback.message.edit_text("✅ Все товары удалены из заказа", parse_mode="HTML")
-
-        await callback.answer()
+        # Обновляем меню редактирования товара
+        if product:
+            text, keyboard = format_edit_item_menu(product, index)
+            await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+            await callback.answer()
 
     except Exception as e:
         await callback.answer(f"❌ Ошибка: {str(e)}", show_alert=True)
@@ -155,20 +217,25 @@ async def callback_edit_increase(callback: CallbackQuery, db: Database, state: F
         products_to_order = data.get('products_to_order', [])
 
         # Находим товар и увеличиваем количество
-        for product in products_to_order:
-            if product['product_id'] == product_id:
-                product['boxes_to_order'] += 1
-                product['needed_weight'] = product['boxes_to_order'] * product['box_weight']
-                product['order_cost'] = product['boxes_to_order'] * product['price_per_box']
+        product = None
+        index = 0
+        for i, p in enumerate(products_to_order, 1):
+            if p['product_id'] == product_id:
+                p['boxes_to_order'] += 1
+                p['needed_weight'] = p['boxes_to_order'] * p['box_weight']
+                p['order_cost'] = p['boxes_to_order'] * p['price_per_box']
+                product = p
+                index = i
                 break
 
         # Обновляем state
         await state.update_data(products_to_order=products_to_order)
 
-        # Обновляем сообщение
-        order_text, keyboard = format_editable_order_list(products_to_order)
-        await callback.message.edit_text(order_text, reply_markup=keyboard, parse_mode="HTML")
-        await callback.answer()
+        # Обновляем меню редактирования товара
+        if product:
+            text, keyboard = format_edit_item_menu(product, index)
+            await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+            await callback.answer()
 
     except Exception as e:
         await callback.answer(f"❌ Ошибка: {str(e)}", show_alert=True)
@@ -188,7 +255,7 @@ async def callback_edit_delete(callback: CallbackQuery, db: Database, state: FSM
         # Обновляем state
         await state.update_data(products_to_order=products_to_order)
 
-        # Обновляем сообщение
+        # Возвращаемся к списку заказа
         if products_to_order:
             order_text, keyboard = format_editable_order_list(products_to_order)
             await callback.message.edit_text(order_text, reply_markup=keyboard, parse_mode="HTML")

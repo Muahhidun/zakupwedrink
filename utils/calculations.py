@@ -245,7 +245,6 @@ def format_editable_order_list(products: List[Dict]) -> Tuple[str, 'InlineKeyboa
     total_cost = sum(p['order_cost'] for p in products)
 
     lines = ["🛒 <b>СПИСОК ДЛЯ ЗАКУПА</b>\n"]
-    buttons = []
 
     for i, p in enumerate(products, 1):
         urgency_icon = "🚨" if p['urgency'] == 'СРОЧНО' else "⚠️"
@@ -262,22 +261,23 @@ def format_editable_order_list(products: List[Dict]) -> Tuple[str, 'InlineKeyboa
             f"{i}. {urgency_icon} <b>{p['name_russian']}</b>\n"
             f"{stock_line}\n"
             f"   Расход: {p['avg_daily_consumption']:.1f} {unit}/день\n"
-            f"   📦 Заказать: <b>{p['boxes_to_order']} коробок</b> "
+            f"   📦 <b>{p['boxes_to_order']} кор.</b> "
             f"({p['needed_weight']:.1f} {unit}) = {p['order_cost']:,.0f}₸\n"
         )
 
-        # Кнопки для каждого товара
-        product_id = p['product_id']
-        buttons.append([
-            InlineKeyboardButton(text="➖", callback_data=f"edit_dec_{product_id}"),
-            InlineKeyboardButton(text="➕", callback_data=f"edit_inc_{product_id}"),
-            InlineKeyboardButton(text="❌ Убрать", callback_data=f"edit_del_{product_id}")
-        ])
+    lines.append(f"\n💰 <b>Общая сумма: {total_cost:,.0f}₸</b>")
+    lines.append(f"\n💡 Нажмите на номер товара для редактирования:")
 
-    lines.append(f"\n💰 <b>Общая сумма заказа: {total_cost:,.0f}₸</b>")
-    lines.append(f"\n💡 Используйте кнопки для редактирования количества")
+    # Создаем кнопки с номерами товаров (по 5 в ряд)
+    buttons = []
+    row = []
+    for i, p in enumerate(products, 1):
+        row.append(InlineKeyboardButton(text=f"{i}", callback_data=f"edit_item_{p['product_id']}"))
+        if len(row) == 5 or i == len(products):
+            buttons.append(row)
+            row = []
 
-    # Кнопка сохранения внизу
+    # Кнопка сохранения
     buttons.append([
         InlineKeyboardButton(text="💾 Сохранить заказ", callback_data="save_edited_order")
     ])
@@ -288,6 +288,39 @@ def format_editable_order_list(products: List[Dict]) -> Tuple[str, 'InlineKeyboa
     keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
 
     return "\n".join(lines), keyboard
+
+
+def format_edit_item_menu(product: Dict, index: int) -> Tuple[str, 'InlineKeyboardMarkup']:
+    """
+    Форматировать меню редактирования конкретного товара
+    """
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+    unit = product.get('unit', 'кг')
+
+    text = (
+        f"✏️ <b>Редактирование товара #{index}</b>\n\n"
+        f"📦 <b>{product['name_russian']}</b>\n"
+        f"Текущее количество: <b>{product['boxes_to_order']} коробок</b>\n"
+        f"Вес: {product['needed_weight']:.1f} {unit}\n"
+        f"Стоимость: {product['order_cost']:,.0f}₸\n\n"
+        f"Что хотите сделать?"
+    )
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="➖ Уменьшить", callback_data=f"edit_dec_{product['product_id']}"),
+            InlineKeyboardButton(text="➕ Увеличить", callback_data=f"edit_inc_{product['product_id']}")
+        ],
+        [
+            InlineKeyboardButton(text="❌ Удалить из заказа", callback_data=f"edit_del_{product['product_id']}")
+        ],
+        [
+            InlineKeyboardButton(text="⬅️ Назад к списку", callback_data="back_to_order_list")
+        ]
+    ])
+
+    return text, keyboard
 
 
 def format_order_list(products: List[Dict]) -> str:
