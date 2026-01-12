@@ -12,7 +12,8 @@ from utils.calculations import (
     calculate_average_consumption,
     days_until_stockout,
     get_products_to_order,
-    format_order_list
+    format_order_list,
+    format_editable_order_list
 )
 
 router = Router()
@@ -70,15 +71,10 @@ async def generate_order(message: Message, db: Database, days: int,
         )
         return
 
-    order_text = format_order_list(products_to_order)
+    # Используем редактируемый формат с inline кнопками
+    order_text, keyboard = format_editable_order_list(products_to_order)
 
-    # Создаем inline кнопку для сохранения заказа
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="💾 Сохранить как заказ", callback_data="save_order")],
-        [InlineKeyboardButton(text="📋 Активные заказы", callback_data="view_pending_orders")]
-    ])
-
-    # Сохраняем данные заказа в state для последующего сохранения
+    # Сохраняем данные заказа в state для последующего редактирования
     if state:
         await state.update_data(
             products_to_order=products_to_order,
@@ -114,7 +110,103 @@ async def cmd_order30(message: Message, db: Database, state: FSMContext):
     await generate_order(message, db, days=30, threshold=30, state=state)
 
 
-@router.callback_query(F.data == "save_order")
+@router.callback_query(F.data.startswith("edit_dec_"))
+async def callback_edit_decrease(callback: CallbackQuery, db: Database, state: FSMContext):
+    """Уменьшить количество коробок на 1"""
+    try:
+        product_id = int(callback.data.split("_")[2])
+        data = await state.get_data()
+        products_to_order = data.get('products_to_order', [])
+
+        # Находим товар и уменьшаем количество
+        for product in products_to_order:
+            if product['product_id'] == product_id:
+                if product['boxes_to_order'] > 1:
+                    product['boxes_to_order'] -= 1
+                    product['needed_weight'] = product['boxes_to_order'] * product['box_weight']
+                    product['order_cost'] = product['boxes_to_order'] * product['price_per_box']
+                else:
+                    # Если было 1, то удаляем товар
+                    products_to_order.remove(product)
+                break
+
+        # Обновляем state
+        await state.update_data(products_to_order=products_to_order)
+
+        # Обновляем сообщение
+        if products_to_order:
+            order_text, keyboard = format_editable_order_list(products_to_order)
+            await callback.message.edit_text(order_text, reply_markup=keyboard, parse_mode="HTML")
+        else:
+            await callback.message.edit_text("✅ Все товары удалены из заказа", parse_mode="HTML")
+
+        await callback.answer()
+
+    except Exception as e:
+        await callback.answer(f"❌ Ошибка: {str(e)}", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("edit_inc_"))
+async def callback_edit_increase(callback: CallbackQuery, db: Database, state: FSMContext):
+    """Увеличить количество коробок на 1"""
+    try:
+        product_id = int(callback.data.split("_")[2])
+        data = await state.get_data()
+        products_to_order = data.get('products_to_order', [])
+
+        # Находим товар и увеличиваем количество
+        for product in products_to_order:
+            if product['product_id'] == product_id:
+                product['boxes_to_order'] += 1
+                product['needed_weight'] = product['boxes_to_order'] * product['box_weight']
+                product['order_cost'] = product['boxes_to_order'] * product['price_per_box']
+                break
+
+        # Обновляем state
+        await state.update_data(products_to_order=products_to_order)
+
+        # Обновляем сообщение
+        order_text, keyboard = format_editable_order_list(products_to_order)
+        await callback.message.edit_text(order_text, reply_markup=keyboard, parse_mode="HTML")
+        await callback.answer()
+
+    except Exception as e:
+        await callback.answer(f"❌ Ошибка: {str(e)}", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("edit_del_"))
+async def callback_edit_delete(callback: CallbackQuery, db: Database, state: FSMContext):
+    """Удалить товар из заказа"""
+    try:
+        product_id = int(callback.data.split("_")[2])
+        data = await state.get_data()
+        products_to_order = data.get('products_to_order', [])
+
+        # Удаляем товар
+        products_to_order = [p for p in products_to_order if p['product_id'] != product_id]
+
+        # Обновляем state
+        await state.update_data(products_to_order=products_to_order)
+
+        # Обновляем сообщение
+        if products_to_order:
+            order_text, keyboard = format_editable_order_list(products_to_order)
+            await callback.message.edit_text(order_text, reply_markup=keyboard, parse_mode="HTML")
+            await callback.answer("✅ Товар удален")
+        else:
+            await callback.message.edit_text(
+                "✅ Все товары удалены из заказа.\n\n"
+                "Заказ не будет сохранен.",
+                parse_mode="HTML"
+            )
+            await state.clear()
+            await callback.answer()
+
+    except Exception as e:
+        await callback.answer(f"❌ Ошибка: {str(e)}", show_alert=True)
+
+
+@router.callback_query(F.data == "save_edited_order")
 async def callback_save_order(callback: CallbackQuery, db: Database, state: FSMContext):
     """Сохранить заказ в базу данных"""
     try:

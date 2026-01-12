@@ -221,6 +221,7 @@ def get_products_to_order(stock_data: List[Dict], days_threshold: int = 7,
                 'boxes_to_order': boxes,
                 'order_cost': boxes * item['price_per_box'],
                 'box_weight': item['box_weight'],
+                'price_per_box': item['price_per_box'],  # Добавляем для редактирования
                 'urgency': 'СРОЧНО' if days_left <= 3 else 'Скоро',
                 'unit': item.get('unit', 'кг')
             })
@@ -229,6 +230,64 @@ def get_products_to_order(stock_data: List[Dict], days_threshold: int = 7,
     products_to_order.sort(key=lambda x: x['days_left'])
 
     return products_to_order
+
+
+def format_editable_order_list(products: List[Dict]) -> Tuple[str, 'InlineKeyboardMarkup']:
+    """
+    Форматировать список заказа с inline кнопками для редактирования
+    Возвращает: (текст, клавиатура)
+    """
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+    if not products:
+        return "✅ Все товары в наличии, заказывать ничего не нужно!", None
+
+    total_cost = sum(p['order_cost'] for p in products)
+
+    lines = ["🛒 <b>СПИСОК ДЛЯ ЗАКУПА</b>\n"]
+    buttons = []
+
+    for i, p in enumerate(products, 1):
+        urgency_icon = "🚨" if p['urgency'] == 'СРОЧНО' else "⚠️"
+        unit = p.get('unit', 'кг')
+        pending_weight = p.get('pending_weight', 0)
+
+        # Формируем строку с остатком
+        stock_line = f"   Осталось: {p['current_stock']:.1f} {unit}"
+        if pending_weight > 0:
+            stock_line += f" + {pending_weight:.1f} {unit} в пути"
+        stock_line += f" (на {p['days_left']} дн.)"
+
+        lines.append(
+            f"{i}. {urgency_icon} <b>{p['name_russian']}</b>\n"
+            f"{stock_line}\n"
+            f"   Расход: {p['avg_daily_consumption']:.1f} {unit}/день\n"
+            f"   📦 Заказать: <b>{p['boxes_to_order']} коробок</b> "
+            f"({p['needed_weight']:.1f} {unit}) = {p['order_cost']:,.0f}₸\n"
+        )
+
+        # Кнопки для каждого товара
+        product_id = p['product_id']
+        buttons.append([
+            InlineKeyboardButton(text="➖", callback_data=f"edit_dec_{product_id}"),
+            InlineKeyboardButton(text="➕", callback_data=f"edit_inc_{product_id}"),
+            InlineKeyboardButton(text="❌ Убрать", callback_data=f"edit_del_{product_id}")
+        ])
+
+    lines.append(f"\n💰 <b>Общая сумма заказа: {total_cost:,.0f}₸</b>")
+    lines.append(f"\n💡 Используйте кнопки для редактирования количества")
+
+    # Кнопка сохранения внизу
+    buttons.append([
+        InlineKeyboardButton(text="💾 Сохранить заказ", callback_data="save_edited_order")
+    ])
+    buttons.append([
+        InlineKeyboardButton(text="📋 Активные заказы", callback_data="view_pending_orders")
+    ])
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+
+    return "\n".join(lines), keyboard
 
 
 def format_order_list(products: List[Dict]) -> str:
