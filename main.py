@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 
 from database import Database as SQLiteDB
 from database_pg import DatabasePG
-from handlers import start, stock, orders, reports, supply, products, history, migrate, average_consumption, fix_cones
+from handlers import start, stock, orders, reports, supply, products, history, migrate, average_consumption, fix_cones, delete_duplicate
 from scheduler import setup_scheduler
 
 # Загрузка переменных окружения
@@ -98,6 +98,7 @@ async def main():
     dp.include_router(migrate.router)
     dp.include_router(average_consumption.router)
     dp.include_router(fix_cones.router)
+    dp.include_router(delete_duplicate.router)
 
     # Настройка и запуск планировщика задач
     scheduler = setup_scheduler(bot)
