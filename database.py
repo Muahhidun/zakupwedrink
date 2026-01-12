@@ -207,3 +207,35 @@ class Database:
             async with db.execute("SELECT COUNT(*) FROM stock") as cursor:
                 row = await cursor.fetchone()
                 return row[0] if row else 0
+
+    # ============ PENDING ORDERS (Заглушки для SQLite) ============
+    # Примечание: полная функциональность реализована только в database_pg.py
+
+    async def get_pending_weight_for_product(self, product_id: int) -> float:
+        """Получить вес товара в активных заказах (заглушка для SQLite)"""
+        return 0.0
+
+    async def create_pending_order(self, total_cost: float, notes: str = None) -> int:
+        """Создать заказ (заглушка для SQLite)"""
+        raise NotImplementedError("Pending orders доступны только с PostgreSQL")
+
+    async def get_pending_orders(self) -> List[Dict]:
+        """Получить активные заказы (заглушка для SQLite)"""
+        return []
+
+    async def get_pending_order_items(self, order_id: int) -> List[Dict]:
+        """Получить товары заказа (заглушка для SQLite)"""
+        return []
+
+    async def add_item_to_order(self, order_id: int, product_id: int,
+                                boxes: int, weight: float, cost: float):
+        """Добавить товар в заказ (заглушка для SQLite)"""
+        raise NotImplementedError("Pending orders доступны только с PostgreSQL")
+
+    async def complete_order(self, order_id: int):
+        """Закрыть заказ (заглушка для SQLite)"""
+        raise NotImplementedError("Pending orders доступны только с PostgreSQL")
+
+    async def cancel_order(self, order_id: int):
+        """Отменить заказ (заглушка для SQLite)"""
+        raise NotImplementedError("Pending orders доступны только с PostgreSQL")

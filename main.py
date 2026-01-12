@@ -8,6 +8,7 @@ import os
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
+from aiogram.fsm.storage.memory import MemoryStorage
 from dotenv import load_dotenv
 
 from database import Database as SQLiteDB
@@ -79,7 +80,9 @@ async def main():
         token=BOT_TOKEN,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML)
     )
-    dp = Dispatcher()
+    # Добавляем storage для FSM (для сохранения состояний заказов)
+    storage = MemoryStorage()
+    dp = Dispatcher(storage=storage)
 
     # Middleware для передачи db во все handlers
     @dp.update.outer_middleware()

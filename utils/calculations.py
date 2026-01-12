@@ -142,7 +142,7 @@ def round_boxes_02_rule(boxes_decimal: float) -> int:
 
 def calculate_order_quantity(avg_daily_consumption: float, days: int,
                             current_stock: float, box_weight: float,
-                            use_02_rule: bool = False) -> Tuple[float, int]:
+                            use_02_rule: bool = False, pending_weight: float = 0) -> Tuple[float, int]:
     """
     Рассчитать количество для заказа
     Возвращает: (вес в кг, количество коробок)
@@ -153,9 +153,15 @@ def calculate_order_quantity(avg_daily_consumption: float, days: int,
         current_stock: текущий остаток
         box_weight: вес одной коробки
         use_02_rule: использовать правило округления 0.2
+        pending_weight: вес товара в активных заказах (в пути)
     """
     required_weight = avg_daily_consumption * days
-    needed_weight = max(0, required_weight - current_stock)
+    # Учитываем текущий остаток И товары в пути
+    available_weight = current_stock + pending_weight
+    needed_weight = max(0, required_weight - available_weight)
+
+    if needed_weight == 0:
+        return 0, 0
 
     boxes_decimal = needed_weight / box_weight
 
@@ -171,32 +177,44 @@ def calculate_order_quantity(avg_daily_consumption: float, days: int,
 
 
 def get_products_to_order(stock_data: List[Dict], days_threshold: int = 7,
-                          order_days: int = 14, use_02_rule: bool = False) -> List[Dict]:
+                          order_days: int = 14, use_02_rule: bool = False,
+                          include_pending: bool = False) -> List[Dict]:
     """
     Получить список товаров для заказа
     stock_data: текущие остатки с историей расхода
     days_threshold: заказывать если осталось меньше N дней
     order_days: заказывать на N дней вперед
     use_02_rule: использовать правило округления 0.2
+    include_pending: учитывать товары в активных заказах (в пути)
     """
     products_to_order = []
 
     for item in stock_data:
         avg_consumption = item.get('avg_daily_consumption', 0)
         current_stock = item.get('weight', 0)
-        days_left = days_until_stockout(current_stock, avg_consumption)
+        pending_weight = item.get('pending_weight', 0) if include_pending else 0
+
+        # Учитываем товары в пути при расчете "на сколько хватит"
+        available_stock = current_stock + pending_weight
+        days_left = days_until_stockout(available_stock, avg_consumption)
 
         if days_left <= days_threshold:
             needed_weight, boxes = calculate_order_quantity(
                 avg_consumption, order_days, current_stock, item['box_weight'],
-                use_02_rule=use_02_rule
+                use_02_rule=use_02_rule,
+                pending_weight=pending_weight
             )
+
+            # Пропускаем если ничего не нужно заказывать (достаточно товара в пути)
+            if boxes == 0:
+                continue
 
             products_to_order.append({
                 'product_id': item['product_id'],
                 'name': item['name_internal'],
                 'name_russian': item['name_russian'],
                 'current_stock': current_stock,
+                'pending_weight': pending_weight,
                 'avg_daily_consumption': avg_consumption,
                 'days_left': days_left,
                 'needed_weight': needed_weight,
@@ -227,10 +245,17 @@ def format_order_list(products: List[Dict]) -> str:
     for p in products:
         urgency_icon = "🚨" if p['urgency'] == 'СРОЧНО' else "⚠️"
         unit = p.get('unit', 'кг')
+        pending_weight = p.get('pending_weight', 0)
+
+        # Формируем строку с остатком
+        stock_line = f"   Осталось: {p['current_stock']:.1f} {unit}"
+        if pending_weight > 0:
+            stock_line += f" + {pending_weight:.1f} {unit} в пути"
+        stock_line += f" (на {p['days_left']} дн.)"
 
         lines.append(
             f"{urgency_icon} <b>{p['name_russian']}</b>\n"
-            f"   Осталось: {p['current_stock']:.1f} {unit} (на {p['days_left']} дн.)\n"
+            f"{stock_line}\n"
             f"   Расход: {p['avg_daily_consumption']:.1f} {unit}/день\n"
             f"   📦 Заказать: <b>{p['boxes_to_order']} коробок</b> "
             f"({p['needed_weight']:.1f} {unit}) = {p['order_cost']:,.0f}₸\n"

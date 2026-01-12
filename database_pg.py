@@ -73,6 +73,29 @@ class DatabasePG:
                 )
             """)
 
+            # Таблица заказов (товары в пути)
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS pending_orders (
+                    id SERIAL PRIMARY KEY,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'completed', 'cancelled')),
+                    total_cost REAL NOT NULL,
+                    notes TEXT
+                )
+            """)
+
+            # Таблица товаров в заказах
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS pending_order_items (
+                    id SERIAL PRIMARY KEY,
+                    order_id INTEGER NOT NULL REFERENCES pending_orders(id) ON DELETE CASCADE,
+                    product_id INTEGER NOT NULL REFERENCES products(id),
+                    boxes_ordered INTEGER NOT NULL,
+                    weight_ordered REAL NOT NULL,
+                    cost REAL NOT NULL
+                )
+            """)
+
         print("✅ PostgreSQL база данных инициализирована")
 
     async def close(self):
@@ -378,3 +401,90 @@ class DatabasePG:
                 SELECT id FROM users WHERE is_active = TRUE
             """)
             return [row['id'] for row in rows]
+
+    # ============ PENDING ORDERS (Заказы в пути) ============
+
+    async def create_pending_order(self, total_cost: float, notes: str = None) -> int:
+        """Создать новый заказ. Возвращает order_id"""
+        async with self.pool.acquire() as conn:
+            order_id = await conn.fetchval("""
+                INSERT INTO pending_orders (total_cost, notes)
+                VALUES ($1, $2)
+                RETURNING id
+            """, total_cost, notes)
+            return order_id
+
+    async def add_item_to_order(self, order_id: int, product_id: int,
+                                boxes: int, weight: float, cost: float):
+        """Добавить товар в заказ"""
+        async with self.pool.acquire() as conn:
+            await conn.execute("""
+                INSERT INTO pending_order_items
+                (order_id, product_id, boxes_ordered, weight_ordered, cost)
+                VALUES ($1, $2, $3, $4, $5)
+            """, order_id, product_id, boxes, weight, cost)
+
+    async def get_pending_orders(self) -> List[Dict]:
+        """Получить все активные заказы (в пути)"""
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch("""
+                SELECT
+                    po.id,
+                    po.created_at,
+                    po.total_cost,
+                    po.notes,
+                    COUNT(poi.id) as items_count,
+                    SUM(poi.weight_ordered) as total_weight
+                FROM pending_orders po
+                LEFT JOIN pending_order_items poi ON po.id = poi.order_id
+                WHERE po.status = 'pending'
+                GROUP BY po.id, po.created_at, po.total_cost, po.notes
+                ORDER BY po.created_at DESC
+            """)
+            return [dict(row) for row in rows]
+
+    async def get_pending_order_items(self, order_id: int) -> List[Dict]:
+        """Получить товары конкретного заказа"""
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch("""
+                SELECT
+                    poi.*,
+                    p.name_russian,
+                    p.name_internal,
+                    p.box_weight,
+                    p.unit
+                FROM pending_order_items poi
+                JOIN products p ON poi.product_id = p.id
+                WHERE poi.order_id = $1
+                ORDER BY p.name_russian
+            """, order_id)
+            return [dict(row) for row in rows]
+
+    async def complete_order(self, order_id: int):
+        """Закрыть заказ (пометить как выполненный)"""
+        async with self.pool.acquire() as conn:
+            await conn.execute("""
+                UPDATE pending_orders
+                SET status = 'completed'
+                WHERE id = $1
+            """, order_id)
+
+    async def cancel_order(self, order_id: int):
+        """Отменить заказ"""
+        async with self.pool.acquire() as conn:
+            await conn.execute("""
+                UPDATE pending_orders
+                SET status = 'cancelled'
+                WHERE id = $1
+            """, order_id)
+
+    async def get_pending_weight_for_product(self, product_id: int) -> float:
+        """Получить общий вес товара в активных заказах (в пути)"""
+        async with self.pool.acquire() as conn:
+            weight = await conn.fetchval("""
+                SELECT COALESCE(SUM(poi.weight_ordered), 0)
+                FROM pending_order_items poi
+                JOIN pending_orders po ON poi.order_id = po.id
+                WHERE poi.product_id = $1 AND po.status = 'pending'
+            """, product_id)
+            return float(weight) if weight else 0.0

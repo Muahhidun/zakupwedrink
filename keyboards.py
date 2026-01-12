@@ -26,12 +26,12 @@ def get_main_menu(is_private_chat: bool = True) -> ReplyKeyboardMarkup:
                     KeyboardButton(text="🛒 Список закупа"),
                 ],
                 [
+                    KeyboardButton(text="📦 Заказы в пути"),
                     KeyboardButton(text="💰 Отчеты"),
-                    KeyboardButton(text="📊 Аналитика"),
                 ],
                 [
+                    KeyboardButton(text="📊 Аналитика"),
                     KeyboardButton(text="📜 История склада"),
-                    KeyboardButton(text="🧪 Тестовый отчёт"),
                 ],
             ],
             resize_keyboard=True,
