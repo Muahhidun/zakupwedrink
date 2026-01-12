@@ -54,24 +54,24 @@ async def generate_order(message: Message, db: Database, days: int, threshold: i
 
 
 @router.message(Command("order"))
-@router.message(F.text == "10 дней")
-async def cmd_order(message: Message, db: Database):
-    """Список товаров для закупа (стандартный - на 10 дней)"""
-    await generate_order(message, db, days=10, threshold=7)
-
-
-@router.message(Command("order14"))
 @router.message(F.text == "14 дней")
-async def cmd_order14(message: Message, db: Database):
-    """Заказ на 14 дней"""
-    await generate_order(message, db, days=14, threshold=7)
+async def cmd_order(message: Message, db: Database):
+    """Список товаров для закупа (стандартный - на 14 дней)"""
+    await generate_order(message, db, days=14, threshold=14)
 
 
-@router.message(Command("order7"))
-@router.message(F.text == "7 дней")
-async def cmd_order7(message: Message, db: Database):
-    """Заказ на 7 дней"""
-    await generate_order(message, db, days=7, threshold=5)
+@router.message(Command("order20"))
+@router.message(F.text == "20 дней")
+async def cmd_order20(message: Message, db: Database):
+    """Заказ на 20 дней"""
+    await generate_order(message, db, days=20, threshold=20)
+
+
+@router.message(Command("order30"))
+@router.message(F.text == "30 дней")
+async def cmd_order30(message: Message, db: Database):
+    """Заказ на 30 дней"""
+    await generate_order(message, db, days=30, threshold=30)
 
 
 @router.message(Command("test_auto_order"))

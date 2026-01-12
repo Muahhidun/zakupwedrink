@@ -86,9 +86,9 @@ def get_order_menu() -> ReplyKeyboardMarkup:
     keyboard = ReplyKeyboardMarkup(
         keyboard=[
             [
-                KeyboardButton(text="7 дней"),
-                KeyboardButton(text="10 дней"),
                 KeyboardButton(text="14 дней"),
+                KeyboardButton(text="20 дней"),
+                KeyboardButton(text="30 дней"),
             ],
             [
                 KeyboardButton(text="⬅️ Назад"),
