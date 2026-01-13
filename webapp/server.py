@@ -79,34 +79,64 @@ async def get_products(request):
 
 
 async def save_stock(request):
-    """API: Сохранить остатки"""
+    """API: Сохранить остатки (с модерацией для сотрудников)"""
     try:
         data = await request.json()
         stock_items = data.get('stock', [])
         user_id = data.get('user_id')
 
-        # Определяем рабочий день (игнорируем переданную дату от клиента)
+        if not user_id or user_id == 'unknown':
+            return web.json_response({'error': 'User ID required'}, status=400)
+
         working_date_str = get_working_date()
         date_obj = datetime.strptime(working_date_str, '%Y-%m-%d').date()
 
-        print(f"📅 Сохранение остатков на рабочий день: {working_date_str}")
+        # Проверяем роль пользователя
+        user_role = await db.get_user_role(user_id)
 
-        # Сохраняем каждый остаток (ON CONFLICT DO UPDATE автоматически обновит если уже есть)
-        for item in stock_items:
-            await db.add_stock(
-                product_id=item['product_id'],
-                date=date_obj,
-                quantity=item['quantity'],
-                weight=item['weight']
-            )
+        if user_role == 'admin':
+            # Админ - сохраняем напрямую
+            for item in stock_items:
+                await db.add_stock(
+                    product_id=item['product_id'],
+                    date=date_obj,
+                    quantity=item['quantity'],
+                    weight=item['weight']
+                )
 
-        print(f"✅ Сохранено {len(stock_items)} позиций (пользователь {user_id})")
+            print(f"✅ Админ {user_id} сохранил {len(stock_items)} позиций")
 
-        return web.json_response({
-            'success': True,
-            'message': f'Сохранено {len(stock_items)} позиций',
-            'working_date': working_date_str
-        })
+            return web.json_response({
+                'success': True,
+                'message': f'Сохранено {len(stock_items)} позиций',
+                'working_date': working_date_str,
+                'requires_moderation': False
+            })
+        else:
+            # Сотрудник - создаем submission
+            try:
+                submission_id = await db.create_stock_submission(
+                    user_id=user_id,
+                    date=date_obj,
+                    items=stock_items
+                )
+            except ValueError as e:
+                # Уже есть pending заявка
+                return web.json_response({'error': str(e)}, status=400)
+
+            print(f"📝 Сотрудник {user_id} создал submission #{submission_id}")
+
+            # Уведомляем админов
+            await notify_admins_about_submission(submission_id, user_id,
+                                                working_date_str, stock_items)
+
+            return web.json_response({
+                'success': True,
+                'message': 'Остатки отправлены на модерацию',
+                'working_date': working_date_str,
+                'submission_id': submission_id,
+                'requires_moderation': True
+            })
 
     except Exception as e:
         print(f"Ошибка сохранения: {e}")
@@ -296,6 +326,118 @@ async def get_today_supplies(request):
         return web.json_response({'error': str(e)}, status=500)
 
 
+async def notify_admins_about_submission(submission_id, user_id, date_str, items):
+    """Отправить уведомление админам о новой заявке"""
+    if not bot_instance:
+        print("⚠️ Bot instance not set, cannot send notifications")
+        return
+
+    try:
+        admin_ids = await db.get_admin_ids()
+        user_info = await db.get_user_info(user_id)
+        username = user_info.get('username') or user_info.get('first_name') or 'Неизвестно'
+
+        message = f"""
+🔔 <b>НОВАЯ ЗАЯВКА НА ОСТАТКИ</b>
+
+👤 Сотрудник: {username}
+📅 Дата: {date_str}
+📦 Товаров: {len(items)}
+
+Заявка №{submission_id}
+"""
+
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="👁️ Просмотреть", callback_data=f"review_{submission_id}")],
+            [
+                InlineKeyboardButton(text="✅ Утвердить", callback_data=f"approve_{submission_id}"),
+                InlineKeyboardButton(text="✏️ Редактировать", callback_data=f"edit_{submission_id}")
+            ],
+            [InlineKeyboardButton(text="❌ Отклонить", callback_data=f"reject_{submission_id}")]
+        ])
+
+        for admin_id in admin_ids:
+            try:
+                await bot_instance.send_message(
+                    chat_id=admin_id,
+                    text=message,
+                    reply_markup=keyboard,
+                    parse_mode="HTML"
+                )
+                print(f"✅ Уведомление отправлено админу {admin_id}")
+            except Exception as e:
+                print(f"❌ Ошибка отправки уведомления админу {admin_id}: {e}")
+    except Exception as e:
+        print(f"❌ Ошибка в notify_admins_about_submission: {e}")
+        import traceback
+        traceback.print_exc()
+
+
+async def get_submission_data(request):
+    """API: Получить данные submission для редактирования"""
+    try:
+        submission_id = int(request.match_info.get('id'))
+
+        submission = await db.get_submission_by_id(submission_id)
+        if not submission:
+            return web.json_response({'error': 'Submission not found'}, status=404)
+
+        items = await db.get_submission_items(submission_id)
+
+        # Конвертируем в формат для WebApp
+        stock_data = []
+        for item in items:
+            stock_data.append({
+                'product_id': item['product_id'],
+                'name_russian': item['name_russian'],
+                'quantity': item.get('edited_quantity') or item['quantity'],
+                'weight': item.get('edited_weight') or item['weight'],
+                'package_weight': item['package_weight'],
+                'unit': item['unit']
+            })
+
+        return web.json_response({
+            'submission_id': submission_id,
+            'date': submission['submission_date'].isoformat(),
+            'stock': stock_data,
+            'submitted_by': submission['submitted_by'],
+            'status': submission['status']
+        })
+
+    except Exception as e:
+        print(f"Ошибка получения submission: {e}")
+        return web.json_response({'error': str(e)}, status=500)
+
+
+async def update_submission(request):
+    """API: Обновить submission (редактирование админом)"""
+    try:
+        data = await request.json()
+        submission_id = data.get('submission_id')
+        stock_items = data.get('stock', [])
+
+        # Обновляем items
+        for item in stock_items:
+            await db.update_submission_item(
+                submission_id=submission_id,
+                product_id=item['product_id'],
+                quantity=item['quantity'],
+                weight=item['weight']
+            )
+
+        print(f"✅ Submission #{submission_id} обновлен")
+
+        return web.json_response({
+            'success': True,
+            'message': 'Изменения сохранены'
+        })
+
+    except Exception as e:
+        print(f"Ошибка обновления submission: {e}")
+        return web.json_response({'error': str(e)}, status=500)
+
+
 def create_app():
     """Создать приложение aiohttp"""
     app = web.Application()
@@ -319,6 +461,10 @@ def create_app():
     app.router.add_get('/api/stock/yesterday', get_yesterday_stock)
     app.router.add_get('/api/stock/{date}', get_stock_for_date)
     app.router.add_get('/api/supplies/today', get_today_supplies)
+
+    # Роуты для модерации
+    app.router.add_get('/api/submission/{id}', get_submission_data)
+    app.router.add_post('/api/submission/update', update_submission)
 
     # Применяем CORS ко всем роутам
     for route in list(app.router.routes()):
