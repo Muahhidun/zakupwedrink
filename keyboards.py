@@ -5,18 +5,45 @@ from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, WebAppInfo
 import os
 
 
-def get_main_menu(is_private_chat: bool = True) -> ReplyKeyboardMarkup:
+def get_main_menu(is_private_chat: bool = True, user_role: str = 'employee') -> ReplyKeyboardMarkup:
     """Главное меню бота
 
     Args:
         is_private_chat: True для личного чата, False для группы
+        user_role: 'employee' или 'admin'
     """
     web_app_url = os.getenv('WEB_APP_URL', 'http://localhost:5000')
 
-    # В группах нельзя использовать WebApp кнопки
-    if is_private_chat:
+    # В группах - базовое меню без ввода остатков
+    if not is_private_chat:
         keyboard = ReplyKeyboardMarkup(
             keyboard=[
+                [KeyboardButton(text="📦 Текущие остатки"), KeyboardButton(text="🛒 Список закупа")],
+                [KeyboardButton(text="💰 Отчеты"), KeyboardButton(text="📊 Аналитика")],
+            ],
+            resize_keyboard=True
+        )
+        return keyboard
+
+    # Личный чат
+    if user_role == 'employee':
+        # СОТРУДНИК - только ввод и свои заявки
+        keyboard = ReplyKeyboardMarkup(
+            keyboard=[
+                [KeyboardButton(text="📝 Ввести остатки", web_app=WebAppInfo(url=web_app_url))],
+                [KeyboardButton(text="📦 Мои заявки")],
+            ],
+            resize_keyboard=True,
+            input_field_placeholder="Введите остатки"
+        )
+    else:
+        # АДМИН - полное меню
+        keyboard = ReplyKeyboardMarkup(
+            keyboard=[
+                [
+                    KeyboardButton(text="📝 Ввести остатки", web_app=WebAppInfo(url=web_app_url)),
+                    KeyboardButton(text="📋 Модерация")
+                ],
                 [
                     KeyboardButton(text="📈 Средний расход"),
                     KeyboardButton(text="📦 Текущие остатки"),
@@ -33,34 +60,14 @@ def get_main_menu(is_private_chat: bool = True) -> ReplyKeyboardMarkup:
                     KeyboardButton(text="📊 Аналитика"),
                     KeyboardButton(text="📜 История склада"),
                 ],
-            ],
-            resize_keyboard=True,
-            input_field_placeholder="Выберите действие"
-        )
-    else:
-        # Для групп - без WebApp кнопки и без ввода остатков
-        keyboard = ReplyKeyboardMarkup(
-            keyboard=[
                 [
-                    KeyboardButton(text="📦 Текущие остатки"),
-                    KeyboardButton(text="🛒 Список закупа"),
-                ],
-                [
-                    KeyboardButton(text="📦 Добавить поставку"),
-                    KeyboardButton(text="💰 Отчеты"),
-                ],
-                [
-                    KeyboardButton(text="📊 Аналитика"),
-                    KeyboardButton(text="📜 История склада"),
-                ],
-                [
-                    KeyboardButton(text="📈 Средний расход"),
-                    KeyboardButton(text="🧪 Тестовый отчёт"),
+                    KeyboardButton(text="👥 Управление"),
                 ],
             ],
             resize_keyboard=True,
             input_field_placeholder="Выберите действие"
         )
+
     return keyboard
 
 

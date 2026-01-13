@@ -80,6 +80,11 @@ async def main():
         token=BOT_TOKEN,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML)
     )
+
+    # Устанавливаем bot instance для webapp уведомлений
+    from webapp.server import set_bot_instance
+    set_bot_instance(bot)
+
     # Добавляем storage для FSM (для сохранения состояний заказов)
     storage = MemoryStorage()
     dp = Dispatcher(storage=storage)
@@ -89,6 +94,11 @@ async def main():
     async def db_middleware(handler, event, data):
         data['db'] = db
         return await handler(event, data)
+
+    # Middleware для проверки ролей
+    from middleware.auth import RoleMiddleware
+    dp.message.middleware(RoleMiddleware())
+    dp.callback_query.middleware(RoleMiddleware())
 
     # Регистрация роутеров
     dp.include_router(start.router)
@@ -102,6 +112,11 @@ async def main():
     dp.include_router(average_consumption.router)
     dp.include_router(fix_cones.router)
     dp.include_router(delete_duplicate.router)
+
+    # Новые роутеры для системы ролей и модерации
+    from handlers import moderation, users
+    dp.include_router(moderation.router)
+    dp.include_router(users.router)
 
     # Настройка и запуск планировщика задач
     scheduler = setup_scheduler(bot)

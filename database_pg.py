@@ -402,6 +402,205 @@ class DatabasePG:
             """)
             return [row['id'] for row in rows]
 
+    # ============ USER ROLES ============
+
+    async def update_user_role(self, user_id: int, role: str, added_by: int):
+        """Установить роль пользователя"""
+        async with self.pool.acquire() as conn:
+            await conn.execute("""
+                UPDATE users
+                SET role = $1, added_by = $2, added_at = CURRENT_TIMESTAMP
+                WHERE id = $3
+            """, role, added_by, user_id)
+
+    async def get_user_role(self, user_id: int) -> str:
+        """Получить роль пользователя"""
+        async with self.pool.acquire() as conn:
+            role = await conn.fetchval("SELECT role FROM users WHERE id = $1", user_id)
+            return role or 'employee'
+
+    async def list_users_with_roles(self) -> List[Dict]:
+        """Список всех пользователей с ролями"""
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch("""
+                SELECT u.id, u.username, u.first_name, u.last_name,
+                       u.role, u.is_active, u.added_at,
+                       a.username as added_by_username
+                FROM users u
+                LEFT JOIN users a ON u.added_by = a.id
+                ORDER BY u.added_at DESC
+            """)
+            return [dict(row) for row in rows]
+
+    async def get_admin_ids(self) -> List[int]:
+        """Получить список ID всех админов"""
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch("SELECT id FROM users WHERE role = 'admin'")
+            return [row['id'] for row in rows]
+
+    async def get_user_info(self, user_id: int) -> Dict:
+        """Получить информацию о пользователе"""
+        async with self.pool.acquire() as conn:
+            row = await conn.fetchrow("""
+                SELECT id, username, first_name, last_name, role
+                FROM users WHERE id = $1
+            """, user_id)
+            return dict(row) if row else {}
+
+    # ============ PENDING STOCK SUBMISSIONS ============
+
+    async def create_stock_submission(self, user_id: int, date, items: List[Dict]) -> int:
+        """Создать новую заявку на остатки"""
+        from datetime import datetime
+        if isinstance(date, str):
+            date = datetime.strptime(date, '%Y-%m-%d').date()
+
+        async with self.pool.acquire() as conn:
+            # Проверяем есть ли уже pending заявка на эту дату
+            existing = await conn.fetchval("""
+                SELECT id FROM pending_stock_submissions
+                WHERE submitted_by = $1 AND submission_date = $2 AND status = 'pending'
+            """, user_id, date)
+
+            if existing:
+                raise ValueError(f"У вас уже есть ожидающая модерации заявка на {date}")
+
+            # Создаем submission
+            submission_id = await conn.fetchval("""
+                INSERT INTO pending_stock_submissions (submitted_by, submission_date)
+                VALUES ($1, $2) RETURNING id
+            """, user_id, date)
+
+            # Добавляем items
+            for item in items:
+                await conn.execute("""
+                    INSERT INTO pending_stock_items
+                    (submission_id, product_id, quantity, weight)
+                    VALUES ($1, $2, $3, $4)
+                """, submission_id, item['product_id'], item['quantity'], item['weight'])
+
+            return submission_id
+
+    async def get_pending_submissions(self) -> List[Dict]:
+        """Получить все pending заявки"""
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch("""
+                SELECT ps.*, u.username, u.first_name, u.last_name,
+                       COUNT(psi.id) as items_count
+                FROM pending_stock_submissions ps
+                JOIN users u ON ps.submitted_by = u.id
+                LEFT JOIN pending_stock_items psi ON ps.id = psi.submission_id
+                WHERE ps.status = 'pending'
+                GROUP BY ps.id, u.username, u.first_name, u.last_name
+                ORDER BY ps.created_at ASC
+            """)
+            return [dict(row) for row in rows]
+
+    async def get_submission_by_id(self, submission_id: int) -> Dict:
+        """Получить submission по ID"""
+        async with self.pool.acquire() as conn:
+            row = await conn.fetchrow("""
+                SELECT ps.*, u.username, u.first_name, u.last_name
+                FROM pending_stock_submissions ps
+                JOIN users u ON ps.submitted_by = u.id
+                WHERE ps.id = $1
+            """, submission_id)
+            return dict(row) if row else None
+
+    async def get_submission_items(self, submission_id: int) -> List[Dict]:
+        """Получить товары в заявке"""
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch("""
+                SELECT psi.*, p.name_internal, p.name_russian,
+                       p.package_weight, p.unit
+                FROM pending_stock_items psi
+                JOIN products p ON psi.product_id = p.id
+                WHERE psi.submission_id = $1
+                ORDER BY p.name_internal
+            """, submission_id)
+            return [dict(row) for row in rows]
+
+    async def approve_submission(self, submission_id: int, admin_id: int):
+        """Утвердить заявку и перенести данные в stock"""
+        async with self.pool.acquire() as conn:
+            async with conn.transaction():
+                submission = await conn.fetchrow("""
+                    SELECT submitted_by, submission_date
+                    FROM pending_stock_submissions
+                    WHERE id = $1 AND status = 'pending'
+                """, submission_id)
+
+                if not submission:
+                    raise ValueError(f"Pending submission {submission_id} not found")
+
+                items = await conn.fetch("""
+                    SELECT product_id,
+                           COALESCE(edited_quantity, quantity) as quantity,
+                           COALESCE(edited_weight, weight) as weight
+                    FROM pending_stock_items WHERE submission_id = $1
+                """, submission_id)
+
+                # Переносим в stock
+                for item in items:
+                    await conn.execute("""
+                        INSERT INTO stock (product_id, date, quantity, weight)
+                        VALUES ($1, $2, $3, $4)
+                        ON CONFLICT(product_id, date)
+                        DO UPDATE SET quantity=EXCLUDED.quantity, weight=EXCLUDED.weight
+                    """, item['product_id'], submission['submission_date'],
+                         item['quantity'], item['weight'])
+
+                # Обновляем статус
+                await conn.execute("""
+                    UPDATE pending_stock_submissions
+                    SET status = 'approved', reviewed_by = $1, reviewed_at = CURRENT_TIMESTAMP
+                    WHERE id = $2
+                """, admin_id, submission_id)
+
+                return submission['submitted_by']
+
+    async def reject_submission(self, submission_id: int, admin_id: int, reason: str):
+        """Отклонить заявку"""
+        async with self.pool.acquire() as conn:
+            submitted_by = await conn.fetchval("""
+                UPDATE pending_stock_submissions
+                SET status = 'rejected', reviewed_by = $1,
+                    reviewed_at = CURRENT_TIMESTAMP, rejection_reason = $2
+                WHERE id = $3 AND status = 'pending'
+                RETURNING submitted_by
+            """, admin_id, reason, submission_id)
+
+            if not submitted_by:
+                raise ValueError(f"Pending submission {submission_id} not found")
+
+            return submitted_by
+
+    async def update_submission_item(self, submission_id: int, product_id: int,
+                                    quantity: float, weight: float):
+        """Отредактировать товар в заявке"""
+        async with self.pool.acquire() as conn:
+            await conn.execute("""
+                UPDATE pending_stock_items
+                SET edited_quantity = $1, edited_weight = $2
+                WHERE submission_id = $3 AND product_id = $4
+            """, quantity, weight, submission_id, product_id)
+
+    async def get_user_submissions(self, user_id: int, limit: int = 20) -> List[Dict]:
+        """Получить заявки пользователя (все статусы)"""
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch("""
+                SELECT ps.*, COUNT(psi.id) as items_count,
+                       r.username as reviewed_by_username
+                FROM pending_stock_submissions ps
+                LEFT JOIN pending_stock_items psi ON ps.id = psi.submission_id
+                LEFT JOIN users r ON ps.reviewed_by = r.id
+                WHERE ps.submitted_by = $1
+                GROUP BY ps.id, r.username
+                ORDER BY ps.created_at DESC
+                LIMIT $2
+            """, user_id, limit)
+            return [dict(row) for row in rows]
+
     # ============ PENDING ORDERS (Заказы в пути) ============
 
     async def create_pending_order(self, total_cost: float, notes: str = None) -> int:

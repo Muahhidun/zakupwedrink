@@ -21,6 +21,15 @@ load_dotenv()
 DATABASE_URL = os.getenv('DATABASE_URL')
 db = None
 
+# Глобальный экземпляр бота для уведомлений
+bot_instance = None
+
+
+def set_bot_instance(bot):
+    """Установить глобальный экземпляр бота"""
+    global bot_instance
+    bot_instance = bot
+
 
 async def init_db(app):
     """Инициализация БД при старте приложения"""
