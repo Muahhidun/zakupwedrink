@@ -15,7 +15,7 @@ async def delete_duplicate_product(message: Message, db):
         product_name = "Шоколадное мороженое"
 
         # Получаем информацию о товаре
-        query = "SELECT id, name_ru, name_cn FROM products WHERE name_ru = $1"
+        query = "SELECT id, name_russian, name_chinese FROM products WHERE name_russian = $1"
         product = await db.pool.fetchrow(query, product_name)
 
         if not product:
@@ -41,9 +41,9 @@ async def delete_duplicate_product(message: Message, db):
 
         result_text = (
             f"✅ <b>Товар успешно удален!</b>\n\n"
-            f"📦 Товар: {product['name_ru']}\n"
+            f"📦 Товар: {product['name_russian']}\n"
             f"🔢 ID: {product_id}\n"
-            f"🇨🇳 Название CN: {product['name_cn']}\n\n"
+            f"🇨🇳 Название CN: {product['name_chinese']}\n\n"
             f"🗑️ Удалено:\n"
             f"   • Записей остатков: {stock_count}\n"
             f"   • Записей поставок: {supply_count}\n"
