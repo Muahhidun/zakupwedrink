@@ -163,6 +163,12 @@ def calculate_order_quantity(avg_daily_consumption: float, days: int,
     if needed_weight == 0:
         return 0, 0
 
+    # Минимальный порог: если нужно меньше 30% от веса коробки, не заказываем
+    # (с учетом товаров в пути хватает запаса)
+    MIN_THRESHOLD = 0.3  # 30% от коробки
+    if needed_weight < box_weight * MIN_THRESHOLD:
+        return 0, 0
+
     boxes_decimal = needed_weight / box_weight
 
     if use_02_rule:
@@ -172,6 +178,10 @@ def calculate_order_quantity(avg_daily_consumption: float, days: int,
         boxes = int(boxes_decimal)
         if needed_weight % box_weight > 0:
             boxes += 1
+
+    # Дополнительная проверка: если получилось 0 коробок, возвращаем 0
+    if boxes == 0:
+        return 0, 0
 
     return needed_weight, boxes
 
