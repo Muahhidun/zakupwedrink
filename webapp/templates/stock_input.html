@@ -430,6 +430,20 @@
             saveBtn.textContent = 'Сохранение...';
 
             try {
+                // Получаем user_id из Telegram WebApp
+                const userId = tg.initDataUnsafe?.user?.id;
+
+                // Отладка: показываем что получили от Telegram
+                console.log('Telegram WebApp initData:', tg.initDataUnsafe);
+                console.log('User ID:', userId);
+
+                if (!userId) {
+                    tg.showAlert('Ошибка: не удалось получить ID пользователя. Откройте мини-апп из Telegram бота.');
+                    saveBtn.disabled = false;
+                    saveBtn.textContent = 'Сохранить';
+                    return;
+                }
+
                 const stockData = [];
 
                 products.forEach(product => {
@@ -461,7 +475,7 @@
                     body: JSON.stringify({
                         date: workingDate,
                         stock: stockData,
-                        user_id: tg.initDataUnsafe?.user?.id || 'unknown'
+                        user_id: userId
                     })
                 });
 
