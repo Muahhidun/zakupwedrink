@@ -404,14 +404,14 @@ class DatabasePG:
 
     # ============ USER ROLES ============
 
-    async def update_user_role(self, user_id: int, role: str, added_by: int):
+    async def update_user_role(self, user_id: int, role: str, added_by: int, display_name: str = None):
         """Установить роль пользователя"""
         async with self.pool.acquire() as conn:
             await conn.execute("""
                 UPDATE users
-                SET role = $1, added_by = $2, added_at = CURRENT_TIMESTAMP
+                SET role = $1, added_by = $2, added_at = CURRENT_TIMESTAMP, display_name = $4
                 WHERE id = $3
-            """, role, added_by, user_id)
+            """, role, added_by, user_id, display_name)
 
     async def get_user_role(self, user_id: int) -> str:
         """Получить роль пользователя"""
@@ -424,7 +424,7 @@ class DatabasePG:
         async with self.pool.acquire() as conn:
             rows = await conn.fetch("""
                 SELECT u.id, u.username, u.first_name, u.last_name,
-                       u.role, u.is_active, u.added_at,
+                       u.role, u.is_active, u.added_at, u.display_name,
                        a.username as added_by_username
                 FROM users u
                 LEFT JOIN users a ON u.added_by = a.id
@@ -442,7 +442,7 @@ class DatabasePG:
         """Получить информацию о пользователе"""
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow("""
-                SELECT id, username, first_name, last_name, role
+                SELECT id, username, first_name, last_name, role, display_name
                 FROM users WHERE id = $1
             """, user_id)
             return dict(row) if row else {}
@@ -485,13 +485,13 @@ class DatabasePG:
         """Получить все pending заявки"""
         async with self.pool.acquire() as conn:
             rows = await conn.fetch("""
-                SELECT ps.*, u.username, u.first_name, u.last_name,
+                SELECT ps.*, u.username, u.first_name, u.last_name, u.display_name,
                        COUNT(psi.id) as items_count
                 FROM pending_stock_submissions ps
                 JOIN users u ON ps.submitted_by = u.id
                 LEFT JOIN pending_stock_items psi ON ps.id = psi.submission_id
                 WHERE ps.status = 'pending'
-                GROUP BY ps.id, u.username, u.first_name, u.last_name
+                GROUP BY ps.id, u.username, u.first_name, u.last_name, u.display_name
                 ORDER BY ps.created_at ASC
             """)
             return [dict(row) for row in rows]
@@ -500,7 +500,7 @@ class DatabasePG:
         """Получить submission по ID"""
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow("""
-                SELECT ps.*, u.username, u.first_name, u.last_name
+                SELECT ps.*, u.username, u.first_name, u.last_name, u.display_name
                 FROM pending_stock_submissions ps
                 JOIN users u ON ps.submitted_by = u.id
                 WHERE ps.id = $1

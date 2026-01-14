@@ -15,6 +15,7 @@ router = Router()
 class UserManagementStates(StatesGroup):
     """Состояния для управления пользователями"""
     entering_user_id = State()
+    entering_display_name = State()
 
 
 @router.message(Command("add_employee"))
@@ -41,16 +42,50 @@ async def process_user_id(message: Message, state: FSMContext, db, **kwargs):
     """Обработка ID пользователя"""
     try:
         user_id = int(message.text.strip())
+
+        # Сохраняем user_id и переходим к вводу имени
+        await state.update_data(user_id=user_id)
+        await state.set_state(UserManagementStates.entering_display_name)
+
+        await message.answer(
+            f"✅ ID получен: {user_id}\n\n"
+            f"📝 <b>Введите имя сотрудника</b>\n"
+            f"(как вы хотите его видеть в уведомлениях)\n\n"
+            f"Например: <i>Иван Петров - касса</i>",
+            parse_mode="HTML"
+        )
+
+    except ValueError:
+        await message.answer("❌ Неверный формат. Введите число (Telegram ID):")
+    except Exception as e:
+        await message.answer(f"❌ Ошибка: {str(e)}")
+        await state.clear()
+
+
+@router.message(UserManagementStates.entering_display_name)
+@admin_only
+async def process_display_name(message: Message, state: FSMContext, db, **kwargs):
+    """Обработка имени для отображения"""
+    try:
+        display_name = message.text.strip()
+
+        if not display_name or len(display_name) < 2:
+            await message.answer("❌ Имя слишком короткое. Введите нормальное имя:")
+            return
+
         data = await state.get_data()
+        user_id = data['user_id']
         role = data['role']
         admin_id = message.from_user.id
 
-        await db.update_user_role(user_id, role, admin_id)
+        # Сохраняем пользователя с display_name
+        await db.update_user_role(user_id, role, admin_id, display_name)
 
         await message.answer(
             f"✅ <b>Пользователь добавлен!</b>\n\n"
-            f"ID: {user_id}\n"
-            f"Роль: {role}\n\n"
+            f"👤 Имя: {display_name}\n"
+            f"🆔 ID: {user_id}\n"
+            f"👔 Роль: {role}\n\n"
             f"Пользователь может начать работу через /start",
             parse_mode="HTML",
             reply_markup=get_main_menu(True, 'admin')
@@ -58,8 +93,6 @@ async def process_user_id(message: Message, state: FSMContext, db, **kwargs):
 
         await state.clear()
 
-    except ValueError:
-        await message.answer("❌ Неверный формат. Введите число (Telegram ID):")
     except Exception as e:
         await message.answer(f"❌ Ошибка: {str(e)}")
         await state.clear()
@@ -85,7 +118,8 @@ async def cmd_list_users(message: Message, db, **kwargs):
         if admins:
             lines.append("<b>👑 Администраторы:</b>")
             for user in admins:
-                name = user.get('username') or user.get('first_name') or f"ID:{user['id']}"
+                # Приоритет: display_name > username > first_name > ID
+                name = user.get('display_name') or user.get('username') or user.get('first_name') or f"ID:{user['id']}"
                 status = "✅" if user['is_active'] else "⏸️"
                 lines.append(f"{status} {name} (ID: {user['id']})")
             lines.append("")
@@ -93,7 +127,8 @@ async def cmd_list_users(message: Message, db, **kwargs):
         if employees:
             lines.append("<b>👷 Сотрудники:</b>")
             for user in employees:
-                name = user.get('username') or user.get('first_name') or f"ID:{user['id']}"
+                # Приоритет: display_name > username > first_name > ID
+                name = user.get('display_name') or user.get('username') or user.get('first_name') or f"ID:{user['id']}"
                 status = "✅" if user['is_active'] else "⏸️"
                 added_by = user.get('added_by_username') or 'Система'
                 lines.append(f"{status} {name} (ID: {user['id']})\n   Добавил: {added_by}")

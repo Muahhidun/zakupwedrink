@@ -335,7 +335,8 @@ async def notify_admins_about_submission(submission_id, user_id, date_str, items
     try:
         admin_ids = await db.get_admin_ids()
         user_info = await db.get_user_info(user_id)
-        username = user_info.get('username') or user_info.get('first_name') or 'Неизвестно'
+        # Приоритет: display_name > username > first_name
+        username = user_info.get('display_name') or user_info.get('username') or user_info.get('first_name') or 'Неизвестно'
 
         message = f"""
 🔔 <b>НОВАЯ ЗАЯВКА НА ОСТАТКИ</b>

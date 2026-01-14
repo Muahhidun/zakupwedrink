@@ -32,7 +32,8 @@ async def callback_review_submission(callback: CallbackQuery, db, **kwargs):
 
         items = await db.get_submission_items(submission_id)
 
-        username = submission.get('username') or submission.get('first_name') or 'Неизвестно'
+        # Приоритет: display_name > username > first_name
+        username = submission.get('display_name') or submission.get('username') or submission.get('first_name') or 'Неизвестно'
         date = submission['submission_date'].strftime('%d.%m.%Y')
 
         lines = [
@@ -179,7 +180,8 @@ async def cmd_pending_submissions(message: Message, db, **kwargs):
         lines = ["📋 <b>ЗАЯВКИ НА МОДЕРАЦИИ</b>\n"]
 
         for sub in submissions:
-            username = sub.get('username') or sub.get('first_name') or 'Неизвестно'
+            # Приоритет: display_name > username > first_name
+            username = sub.get('display_name') or sub.get('username') or sub.get('first_name') or 'Неизвестно'
             date = sub['submission_date'].strftime('%d.%m.%Y')
             created = sub['created_at'].strftime('%d.%m %H:%M')
 
