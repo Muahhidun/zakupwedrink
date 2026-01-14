@@ -26,9 +26,32 @@ bot_instance = None
 
 
 def set_bot_instance(bot):
-    """Установить глобальный экземпляр бота"""
+    """Установить глобальный экземпляр бота (не используется в production)"""
     global bot_instance
     bot_instance = bot
+
+
+def get_bot_instance():
+    """Получить или создать экземпляр бота для уведомлений"""
+    global bot_instance
+    if bot_instance is None:
+        # Создаем bot для отправки уведомлений
+        from aiogram import Bot
+        from aiogram.client.default import DefaultBotProperties
+        from aiogram.enums import ParseMode
+
+        BOT_TOKEN = os.getenv('BOT_TOKEN')
+        if not BOT_TOKEN:
+            print("⚠️ BOT_TOKEN not set, cannot send notifications")
+            return None
+
+        bot_instance = Bot(
+            token=BOT_TOKEN,
+            default=DefaultBotProperties(parse_mode=ParseMode.HTML)
+        )
+        print("✅ Bot instance created for webapp notifications")
+
+    return bot_instance
 
 
 async def init_db(app):
@@ -328,8 +351,9 @@ async def get_today_supplies(request):
 
 async def notify_admins_about_submission(submission_id, user_id, date_str, items):
     """Отправить уведомление админам о новой заявке"""
-    if not bot_instance:
-        print("⚠️ Bot instance not set, cannot send notifications")
+    bot = get_bot_instance()
+    if not bot:
+        print("⚠️ Cannot create bot instance, notifications disabled")
         return
 
     try:
@@ -360,7 +384,7 @@ async def notify_admins_about_submission(submission_id, user_id, date_str, items
 
         for admin_id in admin_ids:
             try:
-                await bot_instance.send_message(
+                await bot.send_message(
                     chat_id=admin_id,
                     text=message,
                     reply_markup=keyboard,
