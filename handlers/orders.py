@@ -24,7 +24,6 @@ import json
 class OrderStates(StatesGroup):
     """Состояния для работы с заказами"""
     waiting_for_save = State()
-    waiting_for_manual_order_product = State()
     waiting_for_manual_order_boxes = State()
 
 
@@ -440,57 +439,82 @@ async def cmd_test_auto_order(message: Message, db: Database):
 
 
 @router.message(Command("add_order_manual"))
+@router.message(F.text == "➕ Добавить заказ")
 async def cmd_add_order_manual(message: Message, state: FSMContext, db: Database):
     """Вручную добавить заказ в пути (для товаров заказанных не через бота)"""
-    await message.answer(
-        "📦 <b>Ручное добавление заказа</b>\n\n"
-        "Выберите товар из списка ниже. Отправьте номер товара:",
-        parse_mode="HTML"
-    )
-
     # Получаем список всех товаров
     products = await db.get_all_products()
 
-    lines = []
-    for i, product in enumerate(products, 1):
-        lines.append(f"{i}. {product['name_russian']}")
+    # Создаем inline кнопки для каждого товара
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-    await message.answer("\n".join(lines))
+    buttons = []
+    for product in products:
+        buttons.append([
+            InlineKeyboardButton(
+                text=f"{product['name_russian']}",
+                callback_data=f"manual_order_product_{product['id']}"
+            )
+        ])
 
-    # Сохраняем товары в state
-    await state.update_data(products=products)
-    await state.set_state(OrderStates.waiting_for_manual_order_product)
+    # Добавляем кнопку отмены
+    buttons.append([
+        InlineKeyboardButton(
+            text="❌ Отмена",
+            callback_data="manual_order_cancel"
+        )
+    ])
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+
+    await message.answer(
+        "📦 <b>Ручное добавление заказа</b>\n\n"
+        "Выберите товар который вы заказали:",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
 
 
-@router.message(OrderStates.waiting_for_manual_order_product)
-async def process_manual_order_product(message: Message, state: FSMContext, db: Database):
-    """Обработка выбора товара"""
+@router.callback_query(F.data == "manual_order_cancel")
+async def callback_manual_order_cancel(callback: CallbackQuery, state: FSMContext):
+    """Отмена добавления заказа"""
+    await state.clear()
+    await callback.message.edit_text("❌ Добавление заказа отменено.")
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("manual_order_product_"))
+async def callback_manual_order_product(callback: CallbackQuery, state: FSMContext, db: Database):
+    """Обработка выбора товара через inline кнопку"""
     try:
-        product_num = int(message.text)
-        data = await state.get_data()
-        products = data['products']
+        # Извлекаем product_id из callback_data
+        product_id = int(callback.data.split("_")[-1])
 
-        if product_num < 1 or product_num > len(products):
-            await message.answer("❌ Неверный номер. Попробуйте еще раз.")
+        # Получаем информацию о товаре
+        products = await db.get_all_products()
+        selected_product = next((p for p in products if p['id'] == product_id), None)
+
+        if not selected_product:
+            await callback.answer("❌ Товар не найден", show_alert=True)
             return
-
-        selected_product = products[product_num - 1]
 
         # Сохраняем выбранный товар
         await state.update_data(selected_product=selected_product)
 
-        await message.answer(
+        await callback.message.edit_text(
             f"✅ Выбрано: <b>{selected_product['name_russian']}</b>\n\n"
             f"1 коробка = {selected_product['box_weight']} {selected_product['unit']}\n"
             f"Цена за коробку: {selected_product['price_per_box']:,.0f}₸\n\n"
-            f"Сколько коробок заказали?",
+            f"Сколько коробок заказали?\n"
+            f"Напишите число:",
             parse_mode="HTML"
         )
 
         await state.set_state(OrderStates.waiting_for_manual_order_boxes)
+        await callback.answer()
 
-    except ValueError:
-        await message.answer("❌ Введите номер товара (число)")
+    except Exception as e:
+        await callback.answer(f"❌ Ошибка: {str(e)}", show_alert=True)
 
 
 @router.message(OrderStates.waiting_for_manual_order_boxes)

@@ -54,11 +54,11 @@ def get_main_menu(is_private_chat: bool = True, user_role: str = 'employee') -> 
                 ],
                 [
                     KeyboardButton(text="📦 Заказы в пути"),
-                    KeyboardButton(text="💰 Отчеты"),
+                    KeyboardButton(text="➕ Добавить заказ"),
                 ],
                 [
+                    KeyboardButton(text="💰 Отчеты"),
                     KeyboardButton(text="📊 Аналитика"),
-                    KeyboardButton(text="📜 История склада"),
                 ],
                 [
                     KeyboardButton(text="👥 Управление"),
