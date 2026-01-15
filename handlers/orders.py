@@ -241,7 +241,7 @@ async def handle_webapp_data(message: Message, db: Database, state: FSMContext):
 @router.callback_query(F.data == "view_pending_orders")
 @router.message(Command("pending_orders"))
 @router.message(F.text == "📦 Заказы в пути")
-async def cmd_view_pending_orders(update, db: Database):
+async def cmd_view_pending_orders(update, db: Database, user_role: str = 'employee'):
     """Просмотр активных заказов"""
     # Определяем тип update (callback или message)
     if isinstance(update, CallbackQuery):
