@@ -415,6 +415,8 @@
                             value="0"
                             inputmode="decimal"
                             placeholder="уп."
+                            onfocus="if(this.value=='0') this.value=''"
+                            onblur="if(this.value=='') this.value='0'; updateConsumption(${product.id})"
                             oninput="updateConsumption(${product.id})"
                         >
                     </div>
