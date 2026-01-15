@@ -24,6 +24,8 @@ import json
 class OrderStates(StatesGroup):
     """Состояния для работы с заказами"""
     waiting_for_save = State()
+    waiting_for_manual_order_product = State()
+    waiting_for_manual_order_boxes = State()
 
 
 async def prepare_order_data(db: Database):
@@ -53,7 +55,7 @@ async def prepare_order_data(db: Database):
 
 
 async def generate_order(message: Message, db: Database, days: int,
-                        threshold: int = 7, state: FSMContext = None):
+                        threshold: int = 7, state: FSMContext = None, user_role: str = 'employee'):
     """Универсальная функция генерации заказа"""
     await message.answer("⏳ Рассчитываю заказ с учетом товаров в пути...")
 
@@ -130,23 +132,23 @@ async def generate_order(message: Message, db: Database, days: int,
 
 @router.message(Command("order"))
 @router.message(F.text == "14 дней")
-async def cmd_order(message: Message, db: Database, state: FSMContext):
+async def cmd_order(message: Message, db: Database, state: FSMContext, user_role: str = 'employee'):
     """Список товаров для закупа (стандартный - на 14 дней)"""
-    await generate_order(message, db, days=14, threshold=14, state=state)
+    await generate_order(message, db, days=14, threshold=14, state=state, user_role=user_role)
 
 
 @router.message(Command("order20"))
 @router.message(F.text == "20 дней")
-async def cmd_order20(message: Message, db: Database, state: FSMContext):
+async def cmd_order20(message: Message, db: Database, state: FSMContext, user_role: str = 'employee'):
     """Заказ на 20 дней"""
-    await generate_order(message, db, days=20, threshold=20, state=state)
+    await generate_order(message, db, days=20, threshold=20, state=state, user_role=user_role)
 
 
 @router.message(Command("order30"))
 @router.message(F.text == "30 дней")
-async def cmd_order30(message: Message, db: Database, state: FSMContext):
+async def cmd_order30(message: Message, db: Database, state: FSMContext, user_role: str = 'employee'):
     """Заказ на 30 дней"""
-    await generate_order(message, db, days=30, threshold=30, state=state)
+    await generate_order(message, db, days=30, threshold=30, state=state, user_role=user_role)
 
 
 
@@ -435,3 +437,104 @@ async def cmd_test_auto_order(message: Message, db: Database):
 
     except Exception as e:
         await message.answer(f"❌ Ошибка: {str(e)}", parse_mode="HTML")
+
+
+@router.message(Command("add_order_manual"))
+async def cmd_add_order_manual(message: Message, state: FSMContext, db: Database):
+    """Вручную добавить заказ в пути (для товаров заказанных не через бота)"""
+    await message.answer(
+        "📦 <b>Ручное добавление заказа</b>\n\n"
+        "Выберите товар из списка ниже. Отправьте номер товара:",
+        parse_mode="HTML"
+    )
+
+    # Получаем список всех товаров
+    products = await db.get_all_products()
+
+    lines = []
+    for i, product in enumerate(products, 1):
+        lines.append(f"{i}. {product['name_russian']}")
+
+    await message.answer("\n".join(lines))
+
+    # Сохраняем товары в state
+    await state.update_data(products=products)
+    await state.set_state(OrderStates.waiting_for_manual_order_product)
+
+
+@router.message(OrderStates.waiting_for_manual_order_product)
+async def process_manual_order_product(message: Message, state: FSMContext, db: Database):
+    """Обработка выбора товара"""
+    try:
+        product_num = int(message.text)
+        data = await state.get_data()
+        products = data['products']
+
+        if product_num < 1 or product_num > len(products):
+            await message.answer("❌ Неверный номер. Попробуйте еще раз.")
+            return
+
+        selected_product = products[product_num - 1]
+
+        # Сохраняем выбранный товар
+        await state.update_data(selected_product=selected_product)
+
+        await message.answer(
+            f"✅ Выбрано: <b>{selected_product['name_russian']}</b>\n\n"
+            f"1 коробка = {selected_product['box_weight']} {selected_product['unit']}\n"
+            f"Цена за коробку: {selected_product['price_per_box']:,.0f}₸\n\n"
+            f"Сколько коробок заказали?",
+            parse_mode="HTML"
+        )
+
+        await state.set_state(OrderStates.waiting_for_manual_order_boxes)
+
+    except ValueError:
+        await message.answer("❌ Введите номер товара (число)")
+
+
+@router.message(OrderStates.waiting_for_manual_order_boxes)
+async def process_manual_order_boxes(message: Message, state: FSMContext, db: Database):
+    """Обработка количества коробок и сохранение заказа"""
+    try:
+        boxes = int(message.text)
+
+        if boxes < 1:
+            await message.answer("❌ Количество коробок должно быть больше 0")
+            return
+
+        data = await state.get_data()
+        product = data['selected_product']
+
+        # Рассчитываем вес и стоимость
+        weight = boxes * product['box_weight']
+        cost = boxes * product['price_per_box']
+
+        # Создаем заказ в БД
+        notes = f"Ручной заказ: {product['name_russian']}"
+        order_id = await db.create_pending_order(cost, notes)
+
+        # Добавляем товар в заказ
+        await db.add_item_to_order(
+            order_id=order_id,
+            product_id=product['id'],
+            boxes=boxes,
+            weight=weight,
+            cost=cost
+        )
+
+        await message.answer(
+            f"✅ <b>Заказ #{order_id} добавлен в пути!</b>\n\n"
+            f"📦 {product['name_russian']}\n"
+            f"   {boxes} коробок × {product['box_weight']} {product['unit']} = {weight:.1f} {product['unit']}\n"
+            f"💰 Стоимость: {cost:,.0f}₸\n\n"
+            f"Теперь бот будет учитывать этот заказ при расчете закупа.",
+            parse_mode="HTML",
+            reply_markup=get_main_menu(True, 'admin')
+        )
+
+        # Очищаем state
+        await state.clear()
+
+    except ValueError:
+        await message.answer("❌ Введите количество коробок (целое число)")
