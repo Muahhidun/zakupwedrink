@@ -244,12 +244,24 @@
                 let orderJson;
                 if (startParam && startParam.startsWith('order_')) {
                     const base64Data = startParam.substring(6);
-                    orderJson = atob(base64Data);
+                    try {
+                        orderJson = atob(base64Data);
+                        console.log('Decoded JSON:', orderJson.substring(0, 200)); // Лог первых 200 символов
+                    } catch (e) {
+                        console.error('Base64 decode error:', e);
+                        throw new Error('Ошибка декодирования данных');
+                    }
                 } else {
                     throw new Error('Нет данных заказа');
                 }
 
-                orderData = JSON.parse(orderJson);
+                try {
+                    orderData = JSON.parse(orderJson);
+                } catch (e) {
+                    console.error('JSON parse error:', e);
+                    console.error('JSON string:', orderJson);
+                    throw new Error('JSON Parse error: ' + e.message);
+                }
 
                 document.getElementById('orderInfo').textContent =
                     `Заказ на ${orderData.order_days} дней • ${orderData.products.length} позиций`;
