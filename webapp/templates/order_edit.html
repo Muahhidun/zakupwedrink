@@ -227,11 +227,6 @@
         tg.expand();
         tg.enableClosingConfirmation();
 
-        // Скрываем прогресс на случай если он уже показывается
-        if (tg.MainButton) {
-            tg.MainButton.hideProgress();
-        }
-
         let orderData = {
             products: [],
             order_days: 14
@@ -413,6 +408,11 @@
         function setupMainButton() {
             console.log('Setting up main button, products count:', orderData.products.length);
             try {
+                // Скрываем прогресс и удаляем старые обработчики
+                tg.MainButton.hideProgress();
+                tg.MainButton.offClick(saveOrder);
+
+                // Настраиваем кнопку
                 tg.MainButton.setParams({
                     text: '💾 Сохранить заказ',
                     color: tg.themeParams.button_color || '#3390ec',
@@ -420,6 +420,7 @@
                     is_visible: true
                 });
 
+                // Добавляем обработчик
                 tg.MainButton.onClick(saveOrder);
                 console.log('Main button setup complete');
             } catch (e) {
