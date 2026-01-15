@@ -11,7 +11,7 @@ router = Router()
 
 
 @router.message(Command("products"))
-async def cmd_products(message: Message, db: Database):
+async def cmd_products(message: Message, db: Database, user_role: str = "admin"):
     """Показать справочник всех товаров"""
     products = await db.get_all_products()
 
@@ -65,8 +65,8 @@ async def cmd_products(message: Message, db: Database):
         if current_message:
             await message.answer(
                 "\n".join(current_message),
-                reply_markup=get_main_menu(),
+                reply_markup=get_main_menu(True, user_role),
                 parse_mode="HTML"
             )
     else:
-        await message.answer(message_text, reply_markup=get_main_menu(), parse_mode="HTML")
+        await message.answer(message_text, reply_markup=get_main_menu(True, user_role), parse_mode="HTML")

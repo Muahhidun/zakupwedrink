@@ -14,7 +14,7 @@ router = Router()
 
 @router.message(Command("report"))
 @router.message(F.text == "📅 Вчера")
-async def cmd_report(message: Message, db: Database):
+async def cmd_report(message: Message, db: Database, user_role: str = "admin"):
     """Отчет о расходе за вчера"""
     today = datetime.now()
     yesterday = today - timedelta(days=1)
@@ -28,19 +28,19 @@ async def cmd_report(message: Message, db: Database):
     consumption = await db.calculate_consumption(day_before_str, yesterday_str)
 
     if not consumption:
-        await message.answer("❌ Нет данных о расходе за вчера", reply_markup=get_main_menu())
+        await message.answer("❌ Нет данных о расходе за вчера", reply_markup=get_main_menu(True, user_role))
         return
 
     total_cost, details = calculate_daily_cost(consumption)
 
     report_text = f"📊 <b>ОТЧЕТ ЗА {yesterday.strftime('%d.%m.%Y')}</b>\n\n{details}"
 
-    await message.answer(report_text, reply_markup=get_main_menu(), parse_mode="HTML")
+    await message.answer(report_text, reply_markup=get_main_menu(True, user_role), parse_mode="HTML")
 
 
 @router.message(Command("week"))
 @router.message(F.text == "📆 Неделя")
-async def cmd_week_report(message: Message, db: Database):
+async def cmd_week_report(message: Message, db: Database, user_role: str = "admin"):
     """Отчет за неделю"""
     today = datetime.now()
     week_ago = today - timedelta(days=7)
@@ -52,7 +52,7 @@ async def cmd_week_report(message: Message, db: Database):
     consumption = await db.calculate_consumption_period(week_ago_str, today_str)
 
     if not consumption:
-        await message.answer("❌ Нет данных о расходе за неделю", reply_markup=get_main_menu())
+        await message.answer("❌ Нет данных о расходе за неделю", reply_markup=get_main_menu(True, user_role))
         return
 
     total_cost = sum(item.get('cost', 0) for item in consumption if item.get('cost', 0) > 0)
@@ -78,12 +78,12 @@ async def cmd_week_report(message: Message, db: Database):
             f"   {item['consumed_weight']:.1f} кг = {item['cost']:,.0f}₸"
         )
 
-    await message.answer("\n".join(lines), reply_markup=get_main_menu(), parse_mode="HTML")
+    await message.answer("\n".join(lines), reply_markup=get_main_menu(True, user_role), parse_mode="HTML")
 
 
 @router.message(Command("analytics"))
 @router.message(F.text == "📊 Аналитика")
-async def cmd_analytics(message: Message, db: Database):
+async def cmd_analytics(message: Message, db: Database, user_role: str = "admin"):
     """Аналитика по товарам"""
     # Расход за последние 7 дней
     today = datetime.now()
@@ -96,7 +96,7 @@ async def cmd_analytics(message: Message, db: Database):
     )
 
     if not consumption:
-        await message.answer("❌ Недостаточно данных для аналитики", reply_markup=get_main_menu())
+        await message.answer("❌ Недостаточно данных для аналитики", reply_markup=get_main_menu(True, user_role))
         return
 
     # Сортируем по весу расхода
@@ -125,4 +125,4 @@ async def cmd_analytics(message: Message, db: Database):
     for item in sorted_by_weight[:3]:
         lines.append(f"• {item['name_russian']}")
 
-    await message.answer("\n".join(lines), reply_markup=get_main_menu(), parse_mode="HTML")
+    await message.answer("\n".join(lines), reply_markup=get_main_menu(True, user_role), parse_mode="HTML")

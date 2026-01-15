@@ -252,7 +252,7 @@ async def process_confirm_supply(callback: CallbackQuery, state: FSMContext, db:
 
     await callback.message.answer(
         "Главное меню:",
-        reply_markup=get_main_menu()
+        reply_markup=get_main_menu(True, user_role)
     )
 
     await state.clear()
@@ -270,7 +270,7 @@ async def process_cancel_supply(callback: CallbackQuery, state: FSMContext):
 
     await callback.message.answer(
         "Главное меню:",
-        reply_markup=get_main_menu()
+        reply_markup=get_main_menu(True, user_role)
     )
 
     await state.clear()

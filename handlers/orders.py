@@ -69,7 +69,7 @@ async def generate_order(message: Message, db: Database, days: int,
         await message.answer(
             "✅ Все товары в наличии (с учетом заказов в пути)!\n"
             "Заказывать ничего не нужно.",
-            reply_markup=get_main_menu()
+            reply_markup=get_main_menu(True, user_role)
         )
         return
 
@@ -228,7 +228,7 @@ async def handle_webapp_data(message: Message, db: Database, state: FSMContext):
                 f"📅 На {order_days} дней\n\n"
                 f"Используйте /pending_orders для просмотра активных заказов.",
                 parse_mode="HTML",
-                reply_markup=get_main_menu()
+                reply_markup=get_main_menu(True, user_role)
             )
 
     except Exception as e:
@@ -260,7 +260,7 @@ async def cmd_view_pending_orders(update, db: Database):
                 await callback.message.edit_text(text, parse_mode="HTML")
                 await callback.answer()
             else:
-                await message.answer(text, parse_mode="HTML", reply_markup=get_main_menu())
+                await message.answer(text, parse_mode="HTML", reply_markup=get_main_menu(True, user_role))
             return
 
         # Формируем список заказов
@@ -283,7 +283,7 @@ async def cmd_view_pending_orders(update, db: Database):
             await callback.message.edit_text(text, parse_mode="HTML")
             await callback.answer()
         else:
-            await message.answer(text, parse_mode="HTML", reply_markup=get_main_menu())
+            await message.answer(text, parse_mode="HTML", reply_markup=get_main_menu(True, user_role))
 
     except Exception as e:
         error_text = f"❌ Ошибка: {str(e)}"

@@ -14,7 +14,7 @@ router = Router()
 
 @router.message(Command("history"))
 @router.message(F.text == "📜 История склада")
-async def cmd_history(message: Message, db: Database):
+async def cmd_history(message: Message, db: Database, user_role: str = "admin"):
     """Показать последние 7 дней с данными"""
     # Получаем последние 7 дат где есть остатки
     async with db.pool.acquire() as conn:
@@ -26,7 +26,7 @@ async def cmd_history(message: Message, db: Database):
         """)
 
     if not dates:
-        await message.answer("❌ Нет данных об остатках", reply_markup=get_main_menu())
+        await message.answer("❌ Нет данных об остатках", reply_markup=get_main_menu(True, user_role))
         return
 
     # Создаём кнопки для выбора даты

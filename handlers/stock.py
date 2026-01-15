@@ -128,7 +128,7 @@ async def start_stock_input(message: Message, state: FSMContext, db: Database):
 
 
 @router.message(StockInput.entering_stock)
-async def process_stock_input(message: Message, state: FSMContext, db: Database):
+async def process_stock_input(message: Message, state: FSMContext, db: Database, user_role: str = 'employee'):
     """Обработка ввода остатков"""
     # Проверяем на команду отмены
     if message.text and message.text.lower() in ['/cancel', 'отмена', '❌ отмена', 'cancel']:
@@ -136,7 +136,7 @@ async def process_stock_input(message: Message, state: FSMContext, db: Database)
         is_private = message.chat.type == 'private'
         await message.answer(
             "❌ Ввод остатков отменён",
-            reply_markup=get_main_menu(is_private),
+            reply_markup=get_main_menu(is_private, user_role),
             parse_mode="HTML"
         )
         return
@@ -208,7 +208,7 @@ async def process_stock_input(message: Message, state: FSMContext, db: Database)
             f"Товаров: {saved}\n"
             f"Общий вес: {total_weight:.1f} кг\n"
             f"Дата: {today}",
-            reply_markup=get_main_menu(is_private),
+            reply_markup=get_main_menu(is_private, user_role),
             parse_mode="HTML"
         )
 
@@ -219,7 +219,7 @@ async def process_stock_input(message: Message, state: FSMContext, db: Database)
             print(f"✅ Отчёт сформирован, длина: {len(report)} символов")
 
             if report and len(report) > 50:  # Проверяем что отчёт не пустой
-                await message.answer(report, reply_markup=get_main_menu(is_private), parse_mode="HTML")
+                await message.answer(report, reply_markup=get_main_menu(is_private, user_role), parse_mode="HTML")
                 print("✅ Отчёт отправлен")
             else:
                 print(f"⚠️ Отчёт пустой или слишком короткий: {report}")
@@ -235,8 +235,7 @@ async def process_stock_input(message: Message, state: FSMContext, db: Database)
             # Не блокируем работу если отчёт не сформировался
 
 
-@router.message(Command("current"))
-async def cmd_current(message: Message, db: Database):
+async def cmd_current(message: Message, db: Database, user_role: str = 'employee'):
     """Показать текущие остатки"""
     stock = await db.get_latest_stock()
 
@@ -268,7 +267,8 @@ async def cmd_current(message: Message, db: Database):
                 f"<b>{packages:.0f} уп.</b> ({weight:.1f} кг)"
             )
 
-    await message.answer("\n".join(lines), reply_markup=get_main_menu(), parse_mode="HTML")
+    is_private = message.chat.type == 'private'
+    await message.answer("\n".join(lines), reply_markup=get_main_menu(is_private, user_role), parse_mode="HTML")
 
 
 # Обработчики команд и кнопок
@@ -340,14 +340,14 @@ async def handle_web_app_data(message: Message, db: Database):
 
 @router.message(Command("current"))
 @router.message(F.text == "📦 Текущие остатки")
-async def cmd_current_handler(message: Message, db: Database):
+async def cmd_current_handler(message: Message, db: Database, user_role: str = 'employee'):
     """Команда и кнопка для текущих остатков"""
-    await cmd_current(message, db)
+    await cmd_current(message, db, user_role)
 
 
 @router.message(Command("test_report"))
 @router.message(F.text == "🧪 Тестовый отчёт")
-async def cmd_test_report(message: Message, db: Database):
+async def cmd_test_report(message: Message, db: Database, user_role: str = 'employee'):
     """Протестировать отчёт по остаткам на последних данных"""
     try:
         is_private = message.chat.type == 'private'
@@ -377,14 +377,14 @@ async def cmd_test_report(message: Message, db: Database):
         print(f"✅ Отчёт сформирован, длина: {len(report)} символов")
 
         if report and len(report) > 50:
-            await message.answer(report, reply_markup=get_main_menu(is_private), parse_mode="HTML")
+            await message.answer(report, reply_markup=get_main_menu(is_private, user_role), parse_mode="HTML")
             print("✅ Тестовый отчёт отправлен")
         else:
             print(f"⚠️ Отчёт пустой или слишком короткий: {report}")
             await message.answer(
                 "⚠️ Недостаточно данных для анализа остатков.\n"
                 "Нужна история за несколько дней для расчёта среднего расхода.",
-                reply_markup=get_main_menu(is_private),
+                reply_markup=get_main_menu(is_private, user_role),
                 parse_mode="HTML"
             )
 
