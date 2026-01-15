@@ -14,7 +14,7 @@ router = Router()
 
 @router.message(Command("report"))
 @router.message(F.text == "📅 Вчера")
-async def cmd_report(message: Message, db: Database, user_role: str = "admin"):
+async def cmd_report(message: Message, db: Database, user_role: str = "employee"):
     """Отчет о расходе за вчера"""
     today = datetime.now()
     yesterday = today - timedelta(days=1)
@@ -40,7 +40,7 @@ async def cmd_report(message: Message, db: Database, user_role: str = "admin"):
 
 @router.message(Command("week"))
 @router.message(F.text == "📆 Неделя")
-async def cmd_week_report(message: Message, db: Database, user_role: str = "admin"):
+async def cmd_week_report(message: Message, db: Database, user_role: str = "employee"):
     """Отчет за неделю"""
     today = datetime.now()
     week_ago = today - timedelta(days=7)
@@ -83,7 +83,7 @@ async def cmd_week_report(message: Message, db: Database, user_role: str = "admi
 
 @router.message(Command("analytics"))
 @router.message(F.text == "📊 Аналитика")
-async def cmd_analytics(message: Message, db: Database, user_role: str = "admin"):
+async def cmd_analytics(message: Message, db: Database, user_role: str = "employee"):
     """Аналитика по товарам"""
     # Расход за последние 7 дней
     today = datetime.now()

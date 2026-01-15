@@ -14,7 +14,7 @@ router = Router()
 
 @router.message(Command("history"))
 @router.message(F.text == "📜 История склада")
-async def cmd_history(message: Message, db: Database, user_role: str = "admin"):
+async def cmd_history(message: Message, db: Database, user_role: str = "employee"):
     """Показать последние 7 дней с данными"""
     # Получаем последние 7 дат где есть остатки
     async with db.pool.acquire() as conn:

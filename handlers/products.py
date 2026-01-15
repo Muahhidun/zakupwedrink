@@ -11,7 +11,7 @@ router = Router()
 
 
 @router.message(Command("products"))
-async def cmd_products(message: Message, db: Database, user_role: str = "admin"):
+async def cmd_products(message: Message, db: Database, user_role: str = "employee"):
     """Показать справочник всех товаров"""
     products = await db.get_all_products()
 
