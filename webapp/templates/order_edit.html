@@ -223,8 +223,14 @@
 
     <script>
         const tg = window.Telegram.WebApp;
+        tg.ready();
         tg.expand();
         tg.enableClosingConfirmation();
+
+        // Скрываем прогресс на случай если он уже показывается
+        if (tg.MainButton) {
+            tg.MainButton.hideProgress();
+        }
 
         let orderData = {
             products: [],
@@ -246,11 +252,19 @@
                     const draftKey = startParam.substring(6);
                     console.log('Loading draft order via API:', draftKey);
 
-                    const response = await fetch(`/api/draft_order/${draftKey}`);
+                    const apiUrl = `${window.location.origin}/api/draft_order/${draftKey}`;
+                    console.log('API URL:', apiUrl);
+
+                    const response = await fetch(apiUrl);
+                    console.log('API response status:', response.status);
+
                     if (!response.ok) {
+                        const errorText = await response.text();
+                        console.error('API error:', errorText);
                         throw new Error('Не удалось загрузить данные заказа');
                     }
                     orderData = await response.json();
+                    console.log('Order data loaded:', orderData);
                 } else if (startParam && startParam.startsWith('order_')) {
                     // Старый способ: парсим из URL (fallback для совместимости)
                     const base64Data = startParam.substring(6);
@@ -397,14 +411,20 @@
         }
 
         function setupMainButton() {
-            tg.MainButton.setParams({
-                text: '💾 Сохранить заказ',
-                color: tg.themeParams.button_color || '#3390ec',
-                is_active: orderData.products.length > 0,
-                is_visible: true
-            });
+            console.log('Setting up main button, products count:', orderData.products.length);
+            try {
+                tg.MainButton.setParams({
+                    text: '💾 Сохранить заказ',
+                    color: tg.themeParams.button_color || '#3390ec',
+                    is_active: orderData.products.length > 0,
+                    is_visible: true
+                });
 
-            tg.MainButton.onClick(saveOrder);
+                tg.MainButton.onClick(saveOrder);
+                console.log('Main button setup complete');
+            } catch (e) {
+                console.error('Error setting up main button:', e);
+            }
         }
 
         function saveOrder() {
