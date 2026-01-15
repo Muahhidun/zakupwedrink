@@ -159,11 +159,13 @@ async def callback_save_order(callback: CallbackQuery, db: Database, state: FSMC
 
         # Добавляем товары в заказ
         for product in products_to_order:
+            # Реальный вес = количество коробок × вес коробки
+            actual_weight = product['boxes_to_order'] * product['box_weight']
             await db.add_item_to_order(
                 order_id=order_id,
                 product_id=product['product_id'],
                 boxes=product['boxes_to_order'],
-                weight=product['needed_weight'],
+                weight=actual_weight,
                 cost=product['order_cost']
             )
 
@@ -209,11 +211,13 @@ async def handle_webapp_data(message: Message, db: Database, state: FSMContext):
 
             # Добавляем товары в заказ
             for product in products_to_order:
+                # Реальный вес = количество коробок × вес коробки
+                actual_weight = product['boxes_to_order'] * product['box_weight']
                 await db.add_item_to_order(
                     order_id=order_id,
                     product_id=product['product_id'],
                     boxes=product['boxes_to_order'],
-                    weight=product['needed_weight'],
+                    weight=actual_weight,
                     cost=product['order_cost']
                 )
 
