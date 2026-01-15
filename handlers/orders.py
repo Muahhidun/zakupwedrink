@@ -84,19 +84,32 @@ async def generate_order(message: Message, db: Database, days: int,
         )
         await state.set_state(OrderStates.waiting_for_save)
 
-    # Создаем данные для передачи в WebApp
-    import json
-    import base64
+    # Создаем уникальный ключ черновика и сохраняем через HTTP запрос к webapp
+    import uuid
+    import aiohttp
+    draft_key = str(uuid.uuid4())
     order_data = {
         'products': products_to_order,
         'order_days': days
     }
-    order_json = json.dumps(order_data, ensure_ascii=False)
-    order_base64 = base64.b64encode(order_json.encode('utf-8')).decode('utf-8')
 
-    # URL мини-аппа
+    # Сохраняем черновик через API
     web_app_url = os.getenv('WEB_APP_URL', 'http://localhost:5000')
-    webapp_url = f"{web_app_url}/order_edit?tgWebAppStartParam=order_{order_base64}"
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{web_app_url}/api/draft_order",
+                json={'draft_key': draft_key, 'order_data': order_data}
+            ) as resp:
+                if resp.status == 200:
+                    print(f"✅ Черновик заказа сохранен: {draft_key}")
+                else:
+                    print(f"⚠️ Ошибка сохранения черновика: {resp.status}")
+    except Exception as e:
+        print(f"⚠️ Не удалось сохранить черновик через API: {e}")
+
+    # URL мини-аппа с коротким draft_key вместо всех данных
+    webapp_url = f"{web_app_url}/order_edit?tgWebAppStartParam=draft_{draft_key}"
 
     # Кнопки: редактировать в приложении или сохранить как есть
     keyboard = InlineKeyboardMarkup(inline_keyboard=[

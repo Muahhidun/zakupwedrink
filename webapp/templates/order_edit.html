@@ -240,27 +240,38 @@
                 const startParam = urlParams.get('tgWebAppStartParam');
 
                 // Данные заказа передаются через start_parameter при открытии WebApp
-                // Формат: order_DATA_BASE64
-                let orderJson;
-                if (startParam && startParam.startsWith('order_')) {
+                // Формат: draft_UUID (новый) или order_DATA_BASE64 (старый, для совместимости)
+                if (startParam && startParam.startsWith('draft_')) {
+                    // Новый способ: загружаем через API
+                    const draftKey = startParam.substring(6);
+                    console.log('Loading draft order via API:', draftKey);
+
+                    const response = await fetch(`/api/draft_order/${draftKey}`);
+                    if (!response.ok) {
+                        throw new Error('Не удалось загрузить данные заказа');
+                    }
+                    orderData = await response.json();
+                } else if (startParam && startParam.startsWith('order_')) {
+                    // Старый способ: парсим из URL (fallback для совместимости)
                     const base64Data = startParam.substring(6);
+                    let orderJson;
                     try {
                         orderJson = atob(base64Data);
-                        console.log('Decoded JSON:', orderJson.substring(0, 200)); // Лог первых 200 символов
+                        console.log('Decoded JSON:', orderJson.substring(0, 200));
                     } catch (e) {
                         console.error('Base64 decode error:', e);
                         throw new Error('Ошибка декодирования данных');
                     }
+
+                    try {
+                        orderData = JSON.parse(orderJson);
+                    } catch (e) {
+                        console.error('JSON parse error:', e);
+                        console.error('JSON string:', orderJson);
+                        throw new Error('JSON Parse error: ' + e.message);
+                    }
                 } else {
                     throw new Error('Нет данных заказа');
-                }
-
-                try {
-                    orderData = JSON.parse(orderJson);
-                } catch (e) {
-                    console.error('JSON parse error:', e);
-                    console.error('JSON string:', orderJson);
-                    throw new Error('JSON Parse error: ' + e.message);
                 }
 
                 document.getElementById('orderInfo').textContent =

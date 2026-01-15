@@ -24,6 +24,9 @@ db = None
 # Глобальный экземпляр бота для уведомлений
 bot_instance = None
 
+# Временное хранилище черновиков заказов (ключ: данные заказа)
+draft_orders = {}
+
 
 def set_bot_instance(bot):
     """Установить глобальный экземпляр бота (не используется в production)"""
@@ -399,6 +402,39 @@ async def notify_admins_about_submission(submission_id, user_id, date_str, items
         traceback.print_exc()
 
 
+async def save_draft_order(request):
+    """API: Сохранить черновик заказа"""
+    try:
+        data = await request.json()
+        draft_key = data.get('draft_key')
+        order_data = data.get('order_data')
+
+        if not draft_key or not order_data:
+            return web.json_response({'error': 'Missing draft_key or order_data'}, status=400)
+
+        draft_orders[draft_key] = order_data
+        print(f"✅ Черновик заказа сохранен: {draft_key}")
+        return web.json_response({'success': True, 'draft_key': draft_key})
+    except Exception as e:
+        print(f"❌ Ошибка сохранения черновика заказа: {e}")
+        return web.json_response({'error': str(e)}, status=500)
+
+
+async def get_draft_order(request):
+    """API: Получить данные черновика заказа"""
+    try:
+        draft_key = request.match_info.get('draft_key')
+
+        if draft_key not in draft_orders:
+            return web.json_response({'error': 'Draft not found'}, status=404)
+
+        order_data = draft_orders[draft_key]
+        return web.json_response(order_data)
+    except Exception as e:
+        print(f"❌ Ошибка получения черновика заказа: {e}")
+        return web.json_response({'error': str(e)}, status=500)
+
+
 async def get_submission_data(request):
     """API: Получить данные submission для редактирования"""
     try:
@@ -490,6 +526,10 @@ def create_app():
     # Роуты для модерации
     app.router.add_get('/api/submission/{id}', get_submission_data)
     app.router.add_post('/api/submission/update', update_submission)
+
+    # Роуты для редактирования заказов
+    app.router.add_post('/api/draft_order', save_draft_order)
+    app.router.add_get('/api/draft_order/{draft_key}', get_draft_order)
 
     # Применяем CORS ко всем роутам
     for route in list(app.router.routes()):
