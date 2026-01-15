@@ -221,6 +221,23 @@
         <div class="loading">Загрузка заказа...</div>
     </div>
 
+    <!-- Запасная кнопка на случай если MainButton не работает -->
+    <button id="fallbackSaveButton" style="
+        display: none;
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        padding: 16px;
+        background: #3390ec;
+        color: white;
+        border: none;
+        font-size: 16px;
+        font-weight: 600;
+        cursor: pointer;
+        z-index: 9999;
+    ">💾 Сохранить заказ</button>
+
     <script>
         const tg = window.Telegram.WebApp;
         tg.ready();
@@ -407,36 +424,86 @@
 
         function setupMainButton() {
             console.log('Setting up main button, products count:', orderData.products.length);
+            console.log('MainButton available:', !!tg.MainButton);
+            console.log('MainButton methods:', tg.MainButton ? Object.keys(tg.MainButton) : 'N/A');
+
+            let mainButtonWorking = false;
+
             try {
-                // Скрываем прогресс и удаляем старые обработчики
-                tg.MainButton.hideProgress();
-                tg.MainButton.offClick(saveOrder);
+                if (tg.MainButton) {
+                    // Скрываем прогресс и удаляем старые обработчики
+                    tg.MainButton.hideProgress();
+                    tg.MainButton.offClick(saveOrder);
 
-                // Настраиваем кнопку
-                tg.MainButton.setParams({
-                    text: '💾 Сохранить заказ',
-                    color: tg.themeParams.button_color || '#3390ec',
-                    is_active: orderData.products.length > 0,
-                    is_visible: true
-                });
+                    // Настраиваем кнопку
+                    tg.MainButton.setParams({
+                        text: '💾 Сохранить заказ',
+                        color: tg.themeParams.button_color || '#3390ec',
+                        is_active: orderData.products.length > 0,
+                        is_visible: true
+                    });
 
-                // Добавляем обработчик
-                tg.MainButton.onClick(saveOrder);
-                console.log('Main button setup complete');
+                    // Добавляем обработчик
+                    tg.MainButton.onClick(saveOrder);
+                    mainButtonWorking = true;
+                    console.log('✅ MainButton setup complete');
+                }
             } catch (e) {
-                console.error('Error setting up main button:', e);
+                console.error('❌ Error setting up MainButton:', e);
+            }
+
+            // Если MainButton не работает - показываем fallback кнопку
+            if (!mainButtonWorking) {
+                console.log('⚠️ Using fallback button');
+                const fallbackBtn = document.getElementById('fallbackSaveButton');
+                fallbackBtn.style.display = 'block';
+                fallbackBtn.onclick = saveOrder;
             }
         }
 
         function saveOrder() {
-            tg.MainButton.showProgress();
+            console.log('💾 Saving order...');
 
-            // Отправляем данные обратно в бота
-            tg.sendData(JSON.stringify({
-                action: 'save_order',
-                products: orderData.products,
-                order_days: orderData.order_days
-            }));
+            // Показываем прогресс на MainButton если доступен
+            if (tg.MainButton) {
+                try {
+                    tg.MainButton.showProgress();
+                } catch (e) {
+                    console.error('Error showing progress:', e);
+                }
+            }
+
+            // Дисейблим fallback кнопку
+            const fallbackBtn = document.getElementById('fallbackSaveButton');
+            if (fallbackBtn) {
+                fallbackBtn.disabled = true;
+                fallbackBtn.textContent = '⏳ Сохранение...';
+            }
+
+            try {
+                // Отправляем данные обратно в бота
+                const dataToSend = JSON.stringify({
+                    action: 'save_order',
+                    products: orderData.products,
+                    order_days: orderData.order_days
+                });
+
+                console.log('Sending data to bot:', dataToSend.substring(0, 200));
+                tg.sendData(dataToSend);
+                console.log('✅ Data sent successfully');
+            } catch (e) {
+                console.error('❌ Error sending data:', e);
+                alert('Ошибка отправки данных: ' + e.message);
+
+                // Восстанавливаем кнопки
+                if (tg.MainButton) {
+                    tg.MainButton.hideProgress();
+                }
+                if (fallbackBtn) {
+                    fallbackBtn.disabled = false;
+                    fallbackBtn.textContent = '💾 Сохранить заказ';
+                }
+            }
         }
 
         // Загружаем заказ при открытии
