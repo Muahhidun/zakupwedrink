@@ -383,10 +383,17 @@ def format_auto_order_list(products: List[Dict], total_cost: float) -> str:
     for i, p in enumerate(products, 1):
         urgency_icon = "🚨" if p['urgency'] == 'СРОЧНО' else "⚠️"
         unit = p.get('unit', 'кг')
+        pending_weight = p.get('pending_weight', 0)
+
+        # Формируем строку с остатком
+        stock_line = f"   Осталось: {p['current_stock']:.1f} {unit}"
+        if pending_weight > 0:
+            stock_line += f" + {pending_weight:.1f} {unit} в пути"
+        stock_line += f" (на {p['days_left']} дн.)"
 
         lines.append(
             f"{i}. {urgency_icon} <b>{p['name_russian']}</b>\n"
-            f"   Осталось: {p['current_stock']:.1f} {unit} (на {p['days_left']} дн.)\n"
+            f"{stock_line}\n"
             f"   📦 Заказать: <b>{p['boxes_to_order']} коробок</b>\n"
             f"   💰 Сумма: {p['order_cost']:,.0f}₸\n"
         )
@@ -417,7 +424,8 @@ def get_auto_order_with_threshold(stock_data: List[Dict],
         stock_data,
         days_threshold=order_days,  # Если остатка < чем на 14 дней → включаем в закуп
         order_days=order_days,
-        use_02_rule=True
+        use_02_rule=True,
+        include_pending=True  # Учитываем товары в пути!
     )
 
     # Считаем общую сумму
