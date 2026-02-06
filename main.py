@@ -52,7 +52,6 @@ async def main():
         logger.info("📦 БД пустая, запускаю автоматический импорт...")
         try:
             from utils.import_csv import import_products_from_csv, import_stock_from_csv
-            import os
 
             csv_path = os.path.join(os.path.dirname(__file__), "data.csv")
 
