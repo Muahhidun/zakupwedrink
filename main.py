@@ -5,6 +5,7 @@ Telegram бот для учета закупок и складских оста�
 import asyncio
 import logging
 import os
+from aiohttp import web
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
@@ -15,6 +16,7 @@ from database import Database as SQLiteDB
 from database_pg import DatabasePG
 from handlers import start, stock, orders, reports, supply, products, history, migrate, average_consumption, fix_cones, delete_duplicate
 from scheduler import setup_scheduler
+from webapp.server import create_app
 
 # Загрузка переменных окружения
 load_dotenv()
@@ -85,6 +87,15 @@ async def main():
     from webapp.server import set_bot_instance
     set_bot_instance(bot)
 
+    # Запуск встроенного веб-сервера (в том же asyncio loop, что и бот)
+    web_app = create_app()
+    runner = web.AppRunner(web_app)
+    await runner.setup()
+    port = int(os.getenv('PORT', 5000))
+    site = web.TCPSite(runner, '0.0.0.0', port)
+    await site.start()
+    logger.info(f"🌐 Веб-сервер запущен на порту {port}")
+
     # Добавляем storage для FSM (для сохранения состояний заказов)
     storage = MemoryStorage()
     dp = Dispatcher(storage=storage)
@@ -128,6 +139,7 @@ async def main():
     try:
         await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
     finally:
+        await runner.cleanup()
         scheduler.shutdown()
         if hasattr(db, 'close'):
             await db.close()

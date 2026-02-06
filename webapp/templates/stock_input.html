@@ -184,6 +184,51 @@
             font-size: 14px;
             font-style: italic;
         }
+
+        .loading-overlay {
+            text-align: center;
+            padding: 40px 20px;
+        }
+
+        .loading-spinner {
+            width: 36px;
+            height: 36px;
+            border: 3px solid var(--tg-theme-section-separator-color, #e8e8e8);
+            border-top-color: var(--tg-theme-button-color, #3390ec);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin: 0 auto 12px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .loading-text {
+            color: var(--tg-theme-hint-color, #999);
+            font-size: 14px;
+        }
+
+        .error-block {
+            text-align: center;
+            padding: 30px 20px;
+        }
+
+        .error-block p {
+            color: var(--tg-theme-hint-color, #999);
+            margin-bottom: 16px;
+            font-size: 14px;
+        }
+
+        .retry-button {
+            padding: 10px 24px;
+            background-color: var(--tg-theme-button-color, #3390ec);
+            color: var(--tg-theme-button-text-color, #ffffff);
+            border: none;
+            border-radius: 8px;
+            font-size: 15px;
+            cursor: pointer;
+        }
     </style>
 </head>
 <body>
@@ -201,6 +246,11 @@
         <button class="edit-button" onclick="loadExistingData()">
             ✏️ Исправить ошибку
         </button>
+    </div>
+
+    <div id="loadingOverlay" class="loading-overlay">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">Загрузка данных...</div>
     </div>
 
     <div class="stock-table" id="stockTable"></div>
@@ -337,10 +387,8 @@
             try {
                 const response = await fetch(`${API_URL}/api/products`);
                 products = await response.json();
-                renderProducts();
             } catch (error) {
                 console.error('Ошибка загрузки товаров:', error);
-                tg.showAlert('Ошибка загрузки данных');
             }
         }
 
@@ -502,10 +550,32 @@
 
         // Инициализация
         async function init() {
-            await checkExistingData();
-            await loadYesterdayStock();  // Загружаем вчерашние данные
-            await loadTodaySupplies();   // Загружаем поставки на сегодня
-            await loadProducts();
+            try {
+                // Загружаем все данные параллельно
+                await Promise.all([
+                    checkExistingData(),
+                    loadYesterdayStock(),
+                    loadTodaySupplies(),
+                    loadProducts()
+                ]);
+
+                // Рендерим после загрузки всех данных
+                renderProducts();
+            } catch (error) {
+                console.error('Ошибка инициализации:', error);
+            }
+
+            // Скрываем загрузку
+            document.getElementById('loadingOverlay').style.display = 'none';
+
+            // Если товары не загрузились, показываем кнопку повтора
+            if (products.length === 0) {
+                document.getElementById('stockTable').innerHTML =
+                    '<div class="error-block">' +
+                    '<p>Не удалось загрузить данные</p>' +
+                    '<button class="retry-button" onclick="location.reload()">Повторить</button>' +
+                    '</div>';
+            }
         }
 
         init();
