@@ -12,8 +12,12 @@ from database_pg import DatabasePG
 NEW_NAME = "Стакан большой 900мл (200шт/кор)"
 
 async def main():
-    db = DatabasePG()
-    await db.initialize()
+    database_url = os.environ.get("DATABASE_URL")
+    if not database_url:
+        print("❌ Установите DATABASE_URL")
+        return
+    db = DatabasePG(database_url)
+    await db.init_db()
 
     products = await db.get_all_products()
 
