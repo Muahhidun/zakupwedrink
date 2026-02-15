@@ -261,7 +261,35 @@
 
     <script>
         const tg = window.Telegram.WebApp;
+        tg.ready();
         tg.expand();
+
+        // Получение user_id с фолбэком на парсинг initData строки
+        function getTelegramUserId() {
+            // 1. Пробуем initDataUnsafe
+            if (tg.initDataUnsafe?.user?.id) {
+                return tg.initDataUnsafe.user.id;
+            }
+            // 2. Парсим initData строку вручную
+            if (tg.initData) {
+                try {
+                    const params = new URLSearchParams(tg.initData);
+                    const userStr = params.get('user');
+                    if (userStr) {
+                        const user = JSON.parse(userStr);
+                        if (user.id) return user.id;
+                    }
+                } catch (e) {
+                    console.error('Ошибка парсинга initData:', e);
+                }
+            }
+            // 3. Пробуем URL параметр
+            const urlParams = new URLSearchParams(window.location.search);
+            const uid = urlParams.get('user_id');
+            if (uid) return parseInt(uid);
+
+            return null;
+        }
 
         let products = [];
         let editMode = false;
@@ -481,10 +509,10 @@
 
             try {
                 // Получаем user_id из Telegram WebApp
-                const userId = tg.initDataUnsafe?.user?.id;
+                const userId = getTelegramUserId();
 
-                // Отладка: показываем что получили от Telegram
-                console.log('Telegram WebApp initData:', tg.initDataUnsafe);
+                console.log('Telegram WebApp initDataUnsafe:', tg.initDataUnsafe);
+                console.log('Telegram WebApp initData:', tg.initData);
                 console.log('User ID:', userId);
 
                 if (!userId) {
