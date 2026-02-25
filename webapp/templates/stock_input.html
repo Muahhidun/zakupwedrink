@@ -1,612 +1,419 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Ввод остатков</title>
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+{% extends "layout.html" %}
 
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background-color: var(--tg-theme-bg-color, #ffffff);
-            color: var(--tg-theme-text-color, #000000);
-            padding: 12px;
-            padding-bottom: 80px;
-        }
+{% block title %}Ввод остатков | WeDrink{% endblock %}
+{% block page_title %}Ввод остатков{% endblock %}
+{% block nav_stock_input %}active{% endblock %}
 
-        h1 {
-            font-size: 20px;
-            font-weight: 600;
-            margin-bottom: 16px;
-            text-align: center;
-        }
+{% block extra_css %}
+<style>
+    .date-info {
+        color: var(--text-secondary);
+        font-size: 14px;
+        margin-bottom: 24px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
 
-        .date-info {
-            text-align: center;
-            color: var(--tg-theme-hint-color, #999);
-            margin-bottom: 20px;
-            font-size: 14px;
-        }
+    .existing-data-alert {
+        background-color: var(--warning-light);
+        border: 1px solid var(--warning);
+        border-radius: var(--radius-md);
+        padding: 16px;
+        margin-bottom: 24px;
+        display: none;
+        animation: fadeInUp 0.3s ease-out;
+    }
 
-        /* Уведомление о существующих данных */
-        .existing-data-alert {
-            background-color: #fff3cd;
-            border: 1px solid #ffc107;
-            border-radius: 8px;
-            padding: 12px;
-            margin-bottom: 20px;
-            display: none;
-        }
+    .existing-data-alert.show {
+        display: block;
+    }
 
-        .existing-data-alert.show {
-            display: block;
-        }
+    .alert-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: #B45309;
+        font-weight: 600;
+        margin-bottom: 8px;
+    }
 
-        .alert-title {
-            font-weight: 600;
-            margin-bottom: 8px;
-            color: #856404;
-        }
+    .alert-message {
+        color: #B45309;
+        font-size: 14px;
+        margin-bottom: 16px;
+    }
 
-        .alert-message {
-            font-size: 14px;
-            color: #856404;
-            margin-bottom: 12px;
-        }
+    /* Fixed Actions Footer */
+    .bottom-actions {
+        position: fixed;
+        bottom: 0;
+        left: 280px;
+        /* offset sidebar */
+        right: 0;
+        padding: 16px 32px;
+        background: rgba(255, 255, 255, 0.9);
+        backdrop-filter: blur(10px);
+        border-top: 1px solid var(--border-color);
+        display: flex;
+        justify-content: flex-end;
+        z-index: 50;
+        transition: left var(--transition-normal);
+    }
 
-        .edit-button {
-            width: 100%;
-            padding: 10px;
-            background-color: #ffc107;
-            color: #000;
-            border: none;
-            border-radius: 6px;
-            font-size: 15px;
-            font-weight: 500;
-            cursor: pointer;
-        }
-
-        .stock-table {
-            width: 100%;
-        }
-
-        .stock-row {
-            display: grid;
-            grid-template-columns: 1fr auto auto auto;
-            gap: 8px;
-            align-items: center;
-            padding: 12px 0;
-            border-bottom: 1px solid var(--tg-theme-section-separator-color, #e8e8e8);
-        }
-
-        .product-info {
-            padding-right: 8px;
-        }
-
-        .product-name {
-            font-size: 14px;
-            font-weight: 500;
-            margin-bottom: 4px;
-        }
-
-        .product-details {
-            font-size: 12px;
-            color: var(--tg-theme-hint-color, #999);
-        }
-
-        .stock-column {
-            text-align: center;
-            min-width: 60px;
-        }
-
-        .column-label {
-            font-size: 10px;
-            color: var(--tg-theme-hint-color, #999);
-            margin-bottom: 4px;
-            text-transform: uppercase;
-        }
-
-        .column-value {
-            font-size: 14px;
-            font-weight: 500;
-        }
-
-        .consumption-value {
-            font-size: 14px;
-            font-weight: 600;
-        }
-
-        .consumption-positive {
-            color: #dc3545;
-        }
-
-        .consumption-negative {
-            color: #28a745;
-        }
-
-        .consumption-zero {
-            color: var(--tg-theme-hint-color, #999);
-        }
-
-        .quantity-input {
-            width: 70px;
-            padding: 8px 6px;
-            font-size: 14px;
-            border: 1px solid var(--tg-theme-section-separator-color, #e8e8e8);
-            border-radius: 8px;
-            background-color: var(--tg-theme-secondary-bg-color, #f5f5f5);
-            color: var(--tg-theme-text-color, #000);
-            text-align: center;
-        }
-
-        .quantity-input:focus {
-            outline: none;
-            border-color: var(--tg-theme-button-color, #3390ec);
-        }
-
-        .save-button {
-            position: fixed;
-            bottom: 0;
+    /* Mobile adjustments */
+    @media (max-width: 768px) {
+        .bottom-actions {
             left: 0;
-            right: 0;
             padding: 16px;
-            background-color: var(--tg-theme-bg-color, #ffffff);
-            border-top: 1px solid var(--tg-theme-section-separator-color, #e8e8e8);
         }
 
-        .save-button button {
-            width: 100%;
-            padding: 14px;
-            background-color: var(--tg-theme-button-color, #3390ec);
-            color: var(--tg-theme-button-text-color, #ffffff);
-            border: none;
-            border-radius: 8px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
+        .content-body {
+            padding-bottom: 100px;
         }
+    }
 
-        .save-button button:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
+    .consumption-positive {
+        color: var(--danger);
+    }
 
-        .instruction {
-            text-align: center;
-            color: var(--tg-theme-hint-color, #999);
-            margin-bottom: 16px;
-            font-size: 14px;
-            font-style: italic;
-        }
+    .consumption-negative {
+        color: var(--secondary);
+    }
 
-        .loading-overlay {
-            text-align: center;
-            padding: 40px 20px;
-        }
+    .consumption-zero {
+        color: var(--text-tertiary);
+    }
 
-        .loading-spinner {
-            width: 36px;
-            height: 36px;
-            border: 3px solid var(--tg-theme-section-separator-color, #e8e8e8);
-            border-top-color: var(--tg-theme-button-color, #3390ec);
-            border-radius: 50%;
-            animation: spin 0.8s linear infinite;
-            margin: 0 auto 12px;
-        }
+    .qty-input {
+        width: 80px;
+        text-align: center;
+        padding: 8px;
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-sm);
+        transition: border-color var(--transition-fast);
+        font-weight: 600;
+    }
 
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
+    .qty-input:focus {
+        border-color: var(--primary);
+        outline: none;
+    }
+</style>
+{% endblock %}
 
-        .loading-text {
-            color: var(--tg-theme-hint-color, #999);
-            font-size: 14px;
-        }
+{% block content %}
+<div class="fade-in-up">
+    <div class="date-info">
+        <span class="material-symbols-rounded">calendar_today</span>
+        <span>Текущая дата: <strong id="currentDate">Загрузка...</strong></span>
+    </div>
 
-        .error-block {
-            text-align: center;
-            padding: 30px 20px;
-        }
-
-        .error-block p {
-            color: var(--tg-theme-hint-color, #999);
-            margin-bottom: 16px;
-            font-size: 14px;
-        }
-
-        .retry-button {
-            padding: 10px 24px;
-            background-color: var(--tg-theme-button-color, #3390ec);
-            color: var(--tg-theme-button-text-color, #ffffff);
-            border: none;
-            border-radius: 8px;
-            font-size: 15px;
-            cursor: pointer;
-        }
-    </style>
-</head>
-<body>
-    <h1>Ввод остатков</h1>
-    <div class="date-info" id="dateInfo">Дата: <span id="currentDate"></span></div>
-    <div class="instruction">Укажите количество упаковок</div>
-
-    <!-- Уведомление о существующих данных -->
+    <!-- Alert for existing data -->
     <div class="existing-data-alert" id="existingDataAlert">
-        <div class="alert-title">⚠️ Остатки уже внесены</div>
-        <div class="alert-message">
-            Остатки за сегодняшний рабочий день уже были внесены.<br>
-            Вы можете исправить данные, если заметили ошибку.
+        <div class="alert-header">
+            <span class="material-symbols-rounded">warning</span>
+            <span>Остатки уже внесены</span>
         </div>
-        <button class="edit-button" onclick="loadExistingData()">
-            ✏️ Исправить ошибку
+        <div class="alert-message">
+            Остатки за сегодняшний рабочий день уже были внесены или отправлены на проверку.<br>
+            Вам нужно внести исправления?
+        </div>
+        <button class="btn btn-warning" onclick="loadExistingData()"
+            style="background-color: #F59E0B; color: white; border: none;">
+            <span class="material-symbols-rounded">edit</span> Исправить
         </button>
     </div>
 
-    <div id="loadingOverlay" class="loading-overlay">
-        <div class="loading-spinner"></div>
-        <div class="loading-text">Загрузка данных...</div>
+    <!-- Table Container -->
+    <div class="card" style="padding: 0; overflow: hidden; margin-bottom: 80px;">
+        <div class="table-container">
+            <table class="table" id="stockTableBase">
+                <thead>
+                    <tr>
+                        <th style="width: 40%">Товар</th>
+                        <th style="text-align: center;">Вчера</th>
+                        <th style="text-align: center;">Расход</th>
+                        <th style="text-align: right; padding-right: 32px;">Остаток (уп.)</th>
+                    </tr>
+                </thead>
+                <tbody id="stockTableBody">
+                    <tr>
+                        <td colspan="4" style="text-align: center; padding: 32px; color: var(--text-tertiary);">
+                            <span class="material-symbols-rounded"
+                                style="animation: spin 1s linear infinite;">sync</span>
+                            <div style="margin-top: 8px;">Загрузка списка товаров...</div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
     </div>
+</div>
 
-    <div class="stock-table" id="stockTable"></div>
+<div class="bottom-actions">
+    <button class="btn btn-primary" id="saveBtn" onclick="saveStock()"
+        style="min-width: 200px; padding: 12px 24px; font-size: 16px;">
+        <span class="material-symbols-rounded">save</span>
+        Отправить остатки
+    </button>
+</div>
+{% endblock %}
 
-    <div class="save-button">
-        <button onclick="saveStock()" id="saveBtn">Сохранить</button>
-    </div>
+{% block extra_js %}
+<script>
+    // Variables
+    let products = [];
+    let yesterdayStock = {};
+    let todaySupplies = {};
+    let workingDate = '';
+    let currentUser = null;
 
-    <script>
-        const tg = window.Telegram.WebApp;
-        tg.ready();
-        tg.expand();
-
-        // Получение user_id с фолбэком на парсинг initData строки
-        function getTelegramUserId() {
-            // 1. Пробуем initDataUnsafe
-            if (tg.initDataUnsafe?.user?.id) {
-                return tg.initDataUnsafe.user.id;
-            }
-            // 2. Парсим initData строку вручную
-            if (tg.initData) {
-                try {
-                    const params = new URLSearchParams(tg.initData);
-                    const userStr = params.get('user');
-                    if (userStr) {
-                        const user = JSON.parse(userStr);
-                        if (user.id) return user.id;
-                    }
-                } catch (e) {
-                    console.error('Ошибка парсинга initData:', e);
-                }
-            }
-            // 3. Пробуем URL параметр
-            const urlParams = new URLSearchParams(window.location.search);
-            const uid = urlParams.get('user_id');
-            if (uid) return parseInt(uid);
-
-            return null;
-        }
-
-        let products = [];
-        let editMode = false;
-        let workingDate = '';
-        let yesterdayStock = {};  // Мапа product_id -> quantity вчерашних остатков
-        let yesterdayDate = null;
-        let todaySupplies = {};   // Мапа product_id -> quantity поставок на сегодня
-
-        // API базовый URL
-        const API_URL = window.location.origin;
-
-        // Форматирование даты
-        function formatDate(dateStr) {
-            const date = new Date(dateStr);
-            return date.toLocaleDateString('ru-RU', {
-                day: '2-digit',
-                month: '2-digit',
-                year: 'numeric'
-            });
-        }
-
-        // Проверка наличия данных
-        async function checkExistingData() {
-            try {
-                const response = await fetch(`${API_URL}/api/stock/check`);
-                const data = await response.json();
-
-                workingDate = data.working_date;
-                document.getElementById('currentDate').textContent = formatDate(workingDate);
-
-                if (data.exists) {
-                    document.getElementById('existingDataAlert').classList.add('show');
-                    editMode = false;
-                }
-            } catch (error) {
-                console.error('Ошибка проверки данных:', error);
-            }
-        }
-
-        // Загрузка существующих данных для редактирования
-        async function loadExistingData() {
-            try {
-                console.log(`🔍 Загрузка данных за дату: ${workingDate}`);
-                const response = await fetch(`${API_URL}/api/stock/${workingDate}`);
-                const existingStock = await response.json();
-
-                console.log(`📦 Получено ${existingStock.length} записей`);
-                if (existingStock.length > 0) {
-                    console.log('Первые 3 записи:', existingStock.slice(0, 3));
-                }
-
-                // Создаём мапу product_id -> quantity
-                const stockMap = {};
-                existingStock.forEach(item => {
-                    stockMap[item.product_id] = item.quantity;
-                });
-
-                console.log(`🗺️ Создана мапа для ${Object.keys(stockMap).length} товаров`);
-
-                // Заполняем форму и пересчитываем расход
-                let filled = 0;
-                products.forEach(product => {
-                    const input = document.getElementById(`qty-${product.id}`);
-                    if (input && stockMap[product.id] !== undefined) {
-                        input.value = stockMap[product.id];
-                        updateConsumption(product.id);  // Пересчитываем расход
-                        filled++;
-                    }
-                });
-
-                console.log(`✅ Заполнено ${filled} полей из ${products.length}`);
-
-                // Скрываем алерт, включаем режим редактирования
-                document.getElementById('existingDataAlert').classList.remove('show');
-                editMode = true;
-
-                tg.showAlert('Данные загружены. Внесите изменения и сохраните.');
-            } catch (error) {
-                console.error('❌ Ошибка загрузки данных:', error);
-                tg.showAlert('Ошибка загрузки данных: ' + error.message);
-            }
-        }
-
-        // Загрузка остатков за вчера
-        async function loadYesterdayStock() {
-            try {
-                const response = await fetch(`${API_URL}/api/stock/yesterday`);
-                const data = await response.json();
-
-                yesterdayDate = data.date;
-
-                // Создаём мапу product_id -> quantity
-                if (data.stock && data.stock.length > 0) {
-                    data.stock.forEach(item => {
-                        yesterdayStock[item.product_id] = item.quantity;
-                    });
-                }
-            } catch (error) {
-                console.error('Ошибка загрузки вчерашних остатков:', error);
-                // Не блокируем работу если вчерашних данных нет
-            }
-        }
-
-        // Загрузка поставок на сегодня
-        async function loadTodaySupplies() {
-            try {
-                const response = await fetch(`${API_URL}/api/supplies/today`);
-                const data = await response.json();
-
-                // Получаем мапу product_id -> quantity поставок
-                if (data.supplies) {
-                    todaySupplies = data.supplies;
-                    console.log('📦 Загружены поставки:', todaySupplies);
-                }
-            } catch (error) {
-                console.error('Ошибка загрузки поставок:', error);
-                // Не блокируем работу если поставок нет
-            }
-        }
-
-        // Загрузка списка товаров
-        async function loadProducts() {
-            try {
-                const response = await fetch(`${API_URL}/api/products`);
-                products = await response.json();
-            } catch (error) {
-                console.error('Ошибка загрузки товаров:', error);
-            }
-        }
-
-        // Пересчёт расхода для товара
-        function updateConsumption(productId) {
-            const yesterday = yesterdayStock[productId] || 0;
-            const supply = todaySupplies[productId] || 0;  // Поставка на сегодня
-            const input = document.getElementById(`qty-${productId}`);
-            const today = parseFloat(input.value) || 0;
-
-            // Ожидаемый остаток = вчерашний + поставка
-            const expected = yesterday + supply;
-
-            // Реальный расход = ожидаемый - текущий
-            const consumption = expected - today;
-            const consumptionEl = document.getElementById(`consumption-${productId}`);
-
-            if (!consumptionEl) return;
-
-            if (consumption > 0) {
-                // Расход (красный)
-                consumptionEl.textContent = `-${consumption.toFixed(1)}`;
-                consumptionEl.className = 'consumption-value consumption-positive';
-            } else if (consumption < 0) {
-                // Прирост (зеленый) - должно быть редко если учитываем поставки
-                consumptionEl.textContent = `+${Math.abs(consumption).toFixed(1)}`;
-                consumptionEl.className = 'consumption-value consumption-negative';
+    // Initialization
+    document.addEventListener('DOMContentLoaded', async () => {
+        try {
+            // Get user auth first
+            const userRes = await fetch('/api/user/me');
+            if (userRes.ok) {
+                const data = await userRes.json();
+                currentUser = data.user;
             } else {
-                consumptionEl.textContent = '0';
-                consumptionEl.className = 'consumption-value consumption-zero';
-            }
-        }
-
-        // Отрисовка таблицы
-        function renderProducts() {
-            const table = document.getElementById('stockTable');
-            table.innerHTML = '';
-
-            products.forEach((product, index) => {
-                const row = document.createElement('div');
-                row.className = 'stock-row';
-
-                const weight = parseFloat(product.package_weight).toFixed(2);
-                const yesterday = yesterdayStock[product.id] || 0;
-                const supply = todaySupplies[product.id] || 0;
-                // Показываем ожидаемый остаток (вчера + поставка)
-                const expectedStock = yesterday + supply;
-                const yesterdayDisplay = expectedStock > 0 ? expectedStock.toFixed(1) : '-';
-
-                row.innerHTML = `
-                    <div class="product-info">
-                        <div class="product-name">${product.name_internal}</div>
-                        <div class="product-details">
-                            ${weight} ${product.unit} × ${product.units_per_box} уп.
-                        </div>
-                    </div>
-                    <div class="stock-column">
-                        <div class="column-label">Вчера</div>
-                        <div class="column-value">${yesterdayDisplay}</div>
-                    </div>
-                    <div class="stock-column">
-                        <div class="column-label">Расход</div>
-                        <div class="consumption-value consumption-zero" id="consumption-${product.id}">-</div>
-                    </div>
-                    <div class="stock-column">
-                        <input
-                            type="number"
-                            class="quantity-input"
-                            id="qty-${product.id}"
-                            min="0"
-                            step="0.5"
-                            value="0"
-                            inputmode="decimal"
-                            placeholder="уп."
-                            onfocus="if(this.value=='0') this.value=''"
-                            onblur="if(this.value=='') this.value='0'; updateConsumption(${product.id})"
-                            oninput="updateConsumption(${product.id})"
-                        >
-                    </div>
-                `;
-                table.appendChild(row);
-            });
-        }
-
-        // Сохранение остатков
-        async function saveStock() {
-            const saveBtn = document.getElementById('saveBtn');
-            saveBtn.disabled = true;
-            saveBtn.textContent = 'Сохранение...';
-
-            try {
-                // Получаем user_id из Telegram WebApp
-                const userId = getTelegramUserId();
-
-                console.log('Telegram WebApp initDataUnsafe:', tg.initDataUnsafe);
-                console.log('Telegram WebApp initData:', tg.initData);
-                console.log('User ID:', userId);
-
-                if (!userId) {
-                    tg.showAlert('Ошибка: не удалось получить ID пользователя. Откройте мини-апп из Telegram бота.');
-                    saveBtn.disabled = false;
-                    saveBtn.textContent = 'Сохранить';
-                    return;
-                }
-
-                const stockData = [];
-
-                products.forEach(product => {
-                    const input = document.getElementById(`qty-${product.id}`);
-                    const quantity = parseFloat(input.value) || 0;
-
-                    if (quantity > 0) {
-                        const weight = quantity * product.package_weight;
-                        stockData.push({
-                            product_id: product.id,
-                            quantity: quantity,
-                            weight: weight
-                        });
+                // Not using session, try Telegram Mini App fallback
+                if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initDataUnsafe) {
+                    const tgUser = window.Telegram.WebApp.initDataUnsafe.user;
+                    if (tgUser) {
+                        currentUser = { id: tgUser.id, role: 'user' }; // assume fallback
                     }
-                });
-
-                if (stockData.length === 0) {
-                    tg.showAlert('Введите хотя бы один товар');
-                    saveBtn.disabled = false;
-                    saveBtn.textContent = 'Сохранить';
-                    return;
                 }
+            }
 
-                const response = await fetch(`${API_URL}/api/stock`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        date: workingDate,
-                        stock: stockData,
-                        user_id: userId
-                    })
+            if (!currentUser) {
+                showToast('Ошибка авторизации. Пожалуйста, войдите в систему.', 'error');
+                return;
+            }
+
+            // Fetch data concurrently
+            await Promise.all([
+                checkExistingData(),
+                loadProducts(),
+                loadYesterdayStock(),
+                loadTodaySupplies()
+            ]);
+
+            renderTable();
+        } catch (e) {
+            console.error(e);
+            showToast('Возникла ошибка при загрузке данных', 'error');
+        }
+    });
+
+    async function checkExistingData() {
+        try {
+            const res = await fetch('/api/stock/check');
+            const data = await res.json();
+            workingDate = data.working_date;
+
+            const d = new Date(workingDate);
+            document.getElementById('currentDate').textContent = d.toLocaleDateString('ru-RU');
+
+            if (data.exists) {
+                document.getElementById('existingDataAlert').classList.add('show');
+            }
+        } catch (e) {
+            console.error(e);
+        }
+    }
+
+    async function loadProducts() {
+        const res = await fetch('/api/products');
+        products = await res.json();
+    }
+
+    async function loadYesterdayStock() {
+        try {
+            const res = await fetch('/api/stock/yesterday');
+            const data = await res.json();
+            if (data.stock) {
+                data.stock.forEach(item => {
+                    yesterdayStock[item.product_id] = item.quantity;
                 });
+            }
+        } catch (e) { console.error('No yesterday stock', e); }
+    }
 
-                const result = await response.json();
+    async function loadTodaySupplies() {
+        try {
+            const res = await fetch('/api/supplies/today');
+            const data = await res.json();
+            if (data.supplies) {
+                todaySupplies = data.supplies;
+            }
+        } catch (e) { }
+    }
 
-                if (result.success) {
-                    tg.showAlert(result.message, () => {
-                        tg.close();
+    function renderTable() {
+        const tbody = document.getElementById('stockTableBody');
+        tbody.innerHTML = '';
+
+        if (products.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; py: 32px">Товары не найдены</td></tr>';
+            return;
+        }
+
+        products.forEach(p => {
+            const yest = yesterdayStock[p.id] || 0;
+            const supp = todaySupplies[p.id] || 0;
+            const expected = yest + supp;
+            const expectedDisplay = expected > 0 ? expected.toFixed(1) : '-';
+
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>
+                    <div style="font-weight: 500">${p.name_internal}</div>
+                    <div style="font-size: 13px; color: var(--text-tertiary); margin-top: 4px;">
+                        ${parseFloat(p.package_weight).toFixed(2)} ${p.unit} × ${p.units_per_box} шт
+                    </div>
+                </td>
+                <td style="text-align: center; font-variant-numeric: tabular-nums;">
+                    <span class="badge ${expected > 0 ? 'badge-success' : ''}" style="background: transparent; color: inherit">${expectedDisplay}</span>
+                </td>
+                <td style="text-align: center;">
+                    <span id="consumption-${p.id}" class="consumption-zero font-mono">-</span>
+                </td>
+                <td style="text-align: right; padding-right: 32px;">
+                    <input type="number" 
+                           id="qty-${p.id}" 
+                           class="qty-input" 
+                           min="0" step="0.5" value="0" 
+                           inputmode="decimal"
+                           onfocus="if(this.value=='0') this.value=''"
+                           onblur="if(this.value=='') this.value='0'; updateConsumption(${p.id})"
+                           oninput="updateConsumption(${p.id})">
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    function updateConsumption(productId) {
+        const expected = (yesterdayStock[productId] || 0) + (todaySupplies[productId] || 0);
+        const current = parseFloat(document.getElementById(`qty-${productId}`).value) || 0;
+        const diff = expected - current;
+
+        const el = document.getElementById(`consumption-${productId}`);
+        if (!el) return;
+
+        if (diff > 0) {
+            el.textContent = `-${diff.toFixed(1)}`;
+            el.className = 'consumption-positive';
+        } else if (diff < 0) {
+            el.textContent = `+${Math.abs(diff).toFixed(1)}`;
+            el.className = 'consumption-negative';
+        } else {
+            el.textContent = '0';
+            el.className = 'consumption-zero';
+        }
+    }
+
+    async function loadExistingData() {
+        try {
+            const res = await fetch(`/api/stock/${workingDate}`);
+            const existing = await res.json();
+
+            const map = {};
+            existing.forEach(i => map[i.product_id] = i.quantity);
+
+            products.forEach(p => {
+                const input = document.getElementById(`qty-${p.id}`);
+                if (input && map[p.id] !== undefined) {
+                    input.value = map[p.id];
+                    updateConsumption(p.id);
+                }
+            });
+
+            document.getElementById('existingDataAlert').classList.remove('show');
+            showToast('Данные для редактирования загружены', 'info');
+        } catch (e) {
+            showToast('Ошибка загрузки данных', 'error');
+        }
+    }
+
+    async function saveStock() {
+        const btn = document.getElementById('saveBtn');
+        btn.disabled = true;
+
+        const originalText = btn.innerHTML;
+        btn.innerHTML = '<span class="material-symbols-rounded" style="animation: spin 1s linear infinite;">sync</span> Отправка...';
+
+        try {
+            const stockData = [];
+            products.forEach(p => {
+                const qty = parseFloat(document.getElementById(`qty-${p.id}`).value) || 0;
+                if (qty > 0) {
+                    stockData.push({
+                        product_id: p.id,
+                        quantity: qty,
+                        weight: qty * p.package_weight
                     });
-                } else {
-                    tg.showAlert('Ошибка сохранения: ' + (result.error || 'Неизвестная ошибка'));
-                    saveBtn.disabled = false;
-                    saveBtn.textContent = 'Сохранить';
                 }
-            } catch (error) {
-                console.error('Ошибка:', error);
-                tg.showAlert('Ошибка сохранения данных');
-                saveBtn.disabled = false;
-                saveBtn.textContent = 'Сохранить';
+            });
+
+            if (stockData.length === 0) {
+                showToast('Укажите количество хотя бы для одного товара', 'warning');
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+                return;
             }
+
+            const payloadParams = {
+                date: workingDate,
+                stock: stockData,
+                user_id: currentUser.id
+            };
+
+            // Check if we are inside Telegram Mini App (to pass initData for auth bypass if session fails)
+            const headers = { 'Content-Type': 'application/json' };
+            if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData) {
+                headers['x-telegram-init-data'] = window.Telegram.WebApp.initData;
+            }
+
+            const response = await fetch('/api/stock', {
+                method: 'POST',
+                headers: headers,
+                body: JSON.stringify(payloadParams)
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                showToast(result.message, 'success');
+                // Highlight success and disable inputs temporarily
+                document.querySelectorAll('.qty-input').forEach(i => {
+                    i.style.borderColor = 'var(--secondary)';
+                    i.style.backgroundColor = 'var(--secondary-light)';
+                    i.disabled = true;
+                });
+
+                setTimeout(() => {
+                    if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initDataUnsafe.user) {
+                        window.Telegram.WebApp.close();
+                    } else if (currentUser.role === 'admin' || currentUser.role === 'manager') {
+                        window.location.href = '/stock';
+                    } else {
+                        // Reset forms
+                        location.reload();
+                    }
+                }, 2000);
+            } else {
+                showToast(result.error || 'Ошибка сохранения', 'error');
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }
+        } catch (e) {
+            showToast('Сетевая ошибка', 'error');
+            btn.disabled = false;
+            btn.innerHTML = originalText;
         }
-
-        // Инициализация
-        async function init() {
-            try {
-                // Загружаем все данные параллельно
-                await Promise.all([
-                    checkExistingData(),
-                    loadYesterdayStock(),
-                    loadTodaySupplies(),
-                    loadProducts()
-                ]);
-
-                // Рендерим после загрузки всех данных
-                renderProducts();
-            } catch (error) {
-                console.error('Ошибка инициализации:', error);
-            }
-
-            // Скрываем загрузку
-            document.getElementById('loadingOverlay').style.display = 'none';
-
-            // Если товары не загрузились, показываем кнопку повтора
-            if (products.length === 0) {
-                document.getElementById('stockTable').innerHTML =
-                    '<div class="error-block">' +
-                    '<p>Не удалось загрузить данные</p>' +
-                    '<button class="retry-button" onclick="location.reload()">Повторить</button>' +
-                    '</div>';
-            }
-        }
-
-        init();
-    </script>
-</body>
-</html>
+    }
+</script>
+{% endblock %}

@@ -1,0 +1,282 @@
+{% extends "layout.html" %}
+
+{% block title %}Приемка товаров | WeDrink{% endblock %}
+{% block page_title %}Приемка товаров (Поставка){% endblock %}
+{% block nav_supply %}active{% endblock %}
+
+{% block extra_css %}
+<style>
+    .supply-container {
+        max-width: 800px;
+        margin: 0 auto;
+    }
+
+    .supply-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 24px;
+        flex-wrap: wrap;
+        gap: 16px;
+    }
+
+    .product-row {
+        display: grid;
+        grid-template-columns: 1fr 100px 100px 120px 40px;
+        gap: 12px;
+        align-items: center;
+        padding: 12px;
+        border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .product-row:last-child {
+        border-bottom: none;
+    }
+
+    .header-row {
+        display: grid;
+        grid-template-columns: 1fr 100px 100px 120px 40px;
+        gap: 12px;
+        padding: 12px;
+        background: var(--bg-surface-hover);
+        font-weight: 600;
+        font-size: 13px;
+        color: var(--text-secondary);
+        border-radius: var(--radius-md) var(--radius-md) 0 0;
+    }
+
+    @media (max-width: 600px) {
+        .header-row {
+            display: none;
+        }
+
+        .product-row {
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+
+        .product-name {
+            grid-column: span 2;
+            font-weight: 600;
+        }
+
+        .row-total {
+            grid-column: span 2;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #f8f9fa;
+            padding: 4px 8px;
+            border-radius: 4px;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="supply-container fade-in-up">
+    <div class="supply-header">
+        <div class="form-group" style="margin-bottom: 0;">
+            <label class="form-label" for="supplyDate">Дата поставки</label>
+            <input type="date" id="supplyDate" class="form-control">
+        </div>
+        <button class="btn btn-primary" onclick="submitSupply()">
+            <span class="material-symbols-rounded">save</span>
+            Сохранить поставку
+        </button>
+    </div>
+
+    <div class="card" style="padding: 0;">
+        <div class="header-row">
+            <div>Товар</div>
+            <div style="text-align: right;">Коробки</div>
+            <div style="text-align: right;">Вес (кг)</div>
+            <div style="text-align: right;">Сумма (₸)</div>
+            <div></div>
+        </div>
+        <div id="supplyItems">
+            <!-- Dynamic rows -->
+        </div>
+        <div style="padding: 16px; border-top: 1px solid var(--border-subtle);">
+            <button class="btn btn-secondary btn-sm" onclick="addRow()">
+                <span class="material-symbols-rounded">add</span>
+                Добавить товар
+            </button>
+        </div>
+    </div>
+
+    <div class="card"
+        style="margin-top: 24px; text-align: right; background: var(--primary-light); border-color: var(--primary);">
+        <div style="font-size: 14px; color: var(--text-secondary);">Итоговая сумма поставки</div>
+        <div style="font-size: 24px; font-weight: 700; color: var(--primary);" id="totalCost">0 ₸</div>
+    </div>
+</div>
+
+<!-- Product Select Template -->
+<template id="productTemplate">
+    <div class="product-row" id="row-{{id}}">
+        <div class="product-name">
+            <select class="form-control product-select" onchange="updateTotal()">
+                <option value="">Выберите товар...</option>
+                {% for p in products %}
+                <option value="{{p.id}}" data-price="{{p.price_per_box}}">{{p.name_internal}}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="row-boxes">
+            <input type="number" class="form-control boxes-input" placeholder="Кол-во" style="text-align: right;"
+                oninput="onBoxesChange(this)" min="0">
+        </div>
+        <div class="row-weight">
+            <input type="number" class="form-control weight-input" placeholder="Вес" style="text-align: right;"
+                step="0.1" min="0">
+        </div>
+        <div class="row-cost">
+            <input type="number" class="form-control cost-input" placeholder="Сумма" style="text-align: right;"
+                oninput="updateTotal()" min="0">
+        </div>
+        <div style="text-align: center;">
+            <button class="btn btn-sm" style="color: var(--danger); padding: 4px;" onclick="removeRow(this)">
+                <span class="material-symbols-rounded">delete</span>
+            </button>
+        </div>
+    </div>
+</template>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let products = [];
+    let rowCounter = 0;
+
+    document.addEventListener('DOMContentLoaded', async () => {
+        document.getElementById('supplyDate').value = new Date().toISOString().split('T')[0];
+
+        // Load products
+        try {
+            const res = await fetch('/api/products');
+            products = await res.json();
+
+            // Add first empty row
+            addRow();
+        } catch (e) {
+            console.error(e);
+        }
+    });
+
+    function addRow() {
+        const container = document.getElementById('supplyItems');
+        const count = ++rowCounter;
+
+        const row = document.createElement('div');
+        row.className = 'product-row';
+
+        let options = products.map(p => `<option value="${p.id}" data-price="${p.price_per_box}" data-weight="${p.package_weight}">${p.name_internal}</option>`).join('');
+
+        row.innerHTML = `
+            <div class="product-name">
+                <select class="form-control product-select" onchange="onProductSelect(this)">
+                    <option value="">Выберите товар...</option>
+                    ${options}
+                </select>
+            </div>
+            <div class="row-boxes">
+                <input type="number" class="form-control boxes-input" placeholder="Кол-во" style="text-align: right;" oninput="onBoxesChange(this)">
+            </div>
+            <div class="row-weight">
+                <input type="number" class="form-control weight-input" placeholder="Вес" style="text-align: right;" step="0.1">
+            </div>
+            <div class="row-cost">
+                <input type="number" class="form-control cost-input" placeholder="Сумма" style="text-align: right;" oninput="updateTotal()">
+            </div>
+            <div style="text-align: center;">
+                <button class="btn btn-sm" style="color: var(--danger); padding: 4px;" onclick="removeRow(this)">
+                    <span class="material-symbols-rounded">delete</span>
+                </button>
+            </div>
+        `;
+        container.appendChild(row);
+    }
+
+    function removeRow(btn) {
+        btn.closest('.product-row').remove();
+        updateTotal();
+    }
+
+    function onProductSelect(select) {
+        updateTotal();
+    }
+
+    function onBoxesChange(input) {
+        const row = input.closest('.product-row');
+        const select = row.querySelector('.product-select');
+        const opt = select.selectedOptions[0];
+
+        if (opt && opt.value) {
+            const price = parseFloat(opt.dataset.price || 0);
+            const packageWeight = parseFloat(opt.dataset.weight || 1);
+            const boxes = parseFloat(input.value || 0);
+
+            // Auto-calculate weight and cost
+            if (boxes > 0) {
+                row.querySelector('.weight-input').value = (boxes * packageWeight).toFixed(1);
+                row.querySelector('.cost-input').value = (boxes * price).toFixed(0);
+            }
+        }
+        updateTotal();
+    }
+
+    function updateTotal() {
+        let total = 0;
+        document.querySelectorAll('.cost-input').forEach(input => {
+            total += parseFloat(input.value || 0);
+        });
+        document.getElementById('totalCost').textContent = `${total.toLocaleString()} ₸`;
+    }
+
+    async function submitSupply() {
+        const date = document.getElementById('supplyDate').value;
+        const items = [];
+
+        document.querySelectorAll('.product-row').forEach(row => {
+            const product_id = row.querySelector('.product-select').value;
+            const boxes = row.querySelector('.boxes-input').value;
+            const weight = row.querySelector('.weight-input').value;
+            const cost = row.querySelector('.cost-input').value;
+
+            if (product_id && (boxes > 0 || weight > 0)) {
+                items.push({
+                    product_id: parseInt(product_id),
+                    boxes: boxes || 0,
+                    weight: weight || 0,
+                    cost: cost || 0
+                });
+            }
+        });
+
+        if (items.length === 0) {
+            alert('Добавьте хотя бы один товар');
+            return;
+        }
+
+        try {
+            const res = await fetch('/api/supply', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ date, items })
+            });
+
+            if (res.ok) {
+                alert('Поставка успешно сохранена');
+                window.location.href = '/stock';
+            } else {
+                const err = await res.json();
+                alert('Ошибка: ' + err.error);
+            }
+        } catch (e) {
+            console.error(e);
+            alert('Ошибка сети');
+        }
+    }
+</script>
+{% endblock %}

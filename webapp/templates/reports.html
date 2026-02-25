@@ -1,0 +1,204 @@
+{% extends "layout.html" %}
+
+{% block title %}Аналитика и Отчеты | WeDrink{% endblock %}
+{% block page_title %}Аналитика и Расходы{% endblock %}
+{% block nav_reports %}active{% endblock %}
+
+{% block extra_css %}
+<style>
+    .report-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 24px;
+        margin-bottom: 32px;
+    }
+
+    .stat-card {
+        padding: 24px;
+        background: var(--bg-surface);
+        border-radius: var(--radius-lg);
+        border: 1px solid var(--border-subtle);
+        box-shadow: var(--shadow-sm);
+    }
+
+    .stat-label {
+        font-size: 14px;
+        color: var(--text-tertiary);
+        margin-bottom: 8px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .stat-value {
+        font-size: 28px;
+        font-weight: 700;
+        color: var(--text-primary);
+    }
+
+    .stat-detail {
+        margin-top: 12px;
+        font-size: 13px;
+        color: var(--text-secondary);
+    }
+
+    .report-section {
+        margin-bottom: 40px;
+    }
+
+    .section-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 20px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="fade-in-up">
+    <!-- Summary Cards -->
+    <div class="report-grid">
+        <div class="stat-card">
+            <div class="stat-label">
+                <span class="material-symbols-rounded" style="color: var(--primary);">payments</span>
+                Затраты на закуп (7 дн.)
+            </div>
+            <div class="stat-value" id="weeklySpend">0 ₸</div>
+            <div class="stat-detail" id="weeklyRange">Загрузка...</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">
+                <span class="material-symbols-rounded" style="color: #F59E0B;">inventory_2</span>
+                Расход товаров (Сегодня)
+            </div>
+            <div class="stat-value" id="dailyConsumption">0 ед.</div>
+            <div class="stat-detail" id="dailyDate">Загрузка...</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">
+                <span class="material-symbols-rounded" style="color: #10B981;">trending_up</span>
+                Наиболее ходовой товар
+            </div>
+            <div class="stat-value" id="topProduct">-</div>
+            <div class="stat-detail">За последние 7 дней</div>
+        </div>
+    </div>
+
+    <!-- Daily Breakdown -->
+    <div class="report-section">
+        <div class="section-header">
+            <h2 style="font-size: 20px; font-weight: 600;">Расход по позициям (Сегодня)</h2>
+            <div style="display: flex; gap: 12px;">
+                <input type="date" id="reportDate" class="form-control" style="width: auto;"
+                    onchange="loadDailyReport()">
+            </div>
+        </div>
+
+        <div class="card" style="padding: 0; overflow: hidden;">
+            <div class="table-container">
+                <table class="table" id="dailyTable">
+                    <thead>
+                        <tr>
+                            <th style="width: 50%">Товар</th>
+                            <th style="text-align: right;">Расход (ед.)</th>
+                            <th style="text-align: right;">Расход (уп.)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="dailyTableBody">
+                        <tr>
+                            <td colspan="3" style="text-align: center; padding: 32px; color: var(--text-tertiary);">
+                                <span class="material-symbols-rounded"
+                                    style="animation: spin 1s linear infinite;">sync</span>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const today = new Date().toISOString().split('T')[0];
+        document.getElementById('reportDate').value = today;
+
+        loadSummary();
+        loadDailyReport();
+    });
+
+    async function loadSummary() {
+        try {
+            const res = await fetch('/api/reports/weekly');
+            const data = await res.json();
+
+            document.getElementById('weeklySpend').textContent = `${data.total_supply_cost.toLocaleString()} ₸`;
+            document.getElementById('weeklyRange').textContent = `${data.start_date} — ${data.end_date}`;
+
+            // Find top product
+            let topProd = '-';
+            let maxCons = 0;
+
+            for (const item of (data.consumption || [])) {
+                let qty = item.consumed_weight || 0;
+                let name = item.name_russian || item.name_internal || 'Неизвестно';
+                if (qty > maxCons) {
+                    maxCons = qty;
+                    topProd = name;
+                }
+            }
+            document.getElementById('topProduct').textContent = topProd;
+
+        } catch (e) {
+            console.error('Error loading summary:', e);
+        }
+    }
+
+    async function loadDailyReport() {
+        const date = document.getElementById('reportDate').value;
+        const tbody = document.getElementById('dailyTableBody');
+
+        tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; padding: 32px;"><span class="material-symbols-rounded" style="animation: spin 1s linear infinite;">sync</span></td></tr>';
+
+        try {
+            const res = await fetch(`/api/reports/daily?date=${date}`);
+            const data = await res.json();
+
+            document.getElementById('dailyDate').textContent = data.date;
+
+            let totalQty = 0;
+            tbody.innerHTML = '';
+
+            const items = (data.consumption || []).sort((a, b) => (b.consumed_weight || 0) - (a.consumed_weight || 0));
+
+            if (items.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; padding: 32px; color: var(--text-tertiary);">Нет данных за этот день</td></tr>';
+                document.getElementById('dailyConsumption').textContent = '0 ед.';
+                return;
+            }
+
+            items.forEach(item => {
+                const name = item.name_russian || item.name_internal || 'Неизвестный товар';
+                const qty = item.consumed_weight || 0;
+                totalQty += qty;
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td style="font-weight: 500;">${name}</td>
+                    <td style="text-align: right; color: var(--primary); font-weight: 600;">${qty.toFixed(1)}</td>
+                    <td style="text-align: right; color: var(--text-tertiary);">${(qty / (item.box_weight || 1)).toFixed(1)}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            document.getElementById('dailyConsumption').textContent = `${totalQty.toFixed(0)} ед.`;
+
+        } catch (e) {
+            console.error('Error loading daily report:', e);
+            tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; color: var(--danger); padding: 32px;">Ошибка загрузки</td></tr>';
+        }
+    }
+</script>
+{% endblock %}

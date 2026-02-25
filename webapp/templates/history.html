@@ -1,0 +1,224 @@
+{% extends "layout.html" %}
+
+{% block title %}История остатков | WeDrink{% endblock %}
+{% block page_title %}История изменения запасов{% endblock %}
+{% block nav_history %}active{% endblock %}
+
+{% block content %}
+<div class="fade-in-up">
+    <!-- Filters -->
+    <div class="card" style="margin-bottom: 24px;">
+        <div style="display: flex; gap: 16px; align-items: flex-end; flex-wrap: wrap;">
+            <div class="form-group" style="margin-bottom: 0; min-width: 250px; flex: 1;">
+                <label class="form-label" for="productSelect">Выберите товар</label>
+                <select id="productSelect" class="form-control" onchange="loadHistory()">
+                    <option value="">-- Выберите --</option>
+                </select>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" for="daysSelect">Период</label>
+                <select id="daysSelect" class="form-control" onchange="loadHistory()">
+                    <option value="7">Неделя (7 дн.)</option>
+                    <option value="14" selected>Две недели (14 дн.)</option>
+                    <option value="30">Месяц (30 дн.)</option>
+                </select>
+            </div>
+
+            <button class="btn btn-secondary" onclick="loadHistory()">
+                <span class="material-symbols-rounded">refresh</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Chart Area -->
+    <div class="card" style="margin-bottom: 24px; display: none;" id="chartContainer">
+        <div style="height: 350px; position: relative;">
+            <canvas id="historyChart"></canvas>
+        </div>
+    </div>
+
+    <!-- Table Container -->
+    <div class="card" style="padding: 0; overflow: hidden;" id="historyTableContainer">
+        <div class="table-container">
+            <table class="table" id="historyTable">
+                <thead>
+                    <tr>
+                        <th style="width: 25%">Дата</th>
+                        <th style="text-align: right;">Остаток</th>
+                        <th style="text-align: right;">Расход (уп.)</th>
+                        <th style="text-align: center;">Статус</th>
+                    </tr>
+                </thead>
+                <tbody id="historyTableBody">
+                    <tr>
+                        <td colspan="4" style="text-align: center; padding: 32px; color: var(--text-tertiary);">Выберите
+                            товар для просмотра истории</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', async () => {
+        try {
+            const res = await fetch('/api/products');
+            const data = await res.json();
+
+            const select = document.getElementById('productSelect');
+            data.forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = p.id;
+                opt.textContent = `${p.name_internal} (${p.unit})`;
+                select.appendChild(opt);
+            });
+        } catch (e) {
+            console.error(e);
+        }
+    });
+
+    let historyChart = null;
+
+    async function loadHistory() {
+        const productId = document.getElementById('productSelect').value;
+        const days = document.getElementById('daysSelect').value;
+        const tbody = document.getElementById('historyTableBody');
+
+        if (!productId) return;
+
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="4" style="text-align: center; padding: 40px; color: var(--text-tertiary);">
+                    <span class="material-symbols-rounded" style="animation: spin 1s linear infinite; font-size: 24px;">sync</span>
+                </td>
+            </tr>
+        `;
+
+        try {
+            const res = await fetch(`/api/history/${productId}?days=${days}`);
+            if (!res.ok) throw new Error('API Error');
+            const records = await res.json();
+
+            document.getElementById('chartContainer').style.display = 'block';
+            tbody.innerHTML = '';
+
+            if (records.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 32px">История не найдена</td></tr>';
+                if (historyChart) {
+                    historyChart.destroy();
+                    historyChart = null;
+                }
+                return;
+            }
+
+            // Массивы для графика (нужны в хронологическом порядке)
+            const sortedRecords = [...records].reverse();
+            const labels = sortedRecords.map(r => new Date(r.date).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' }));
+            const values = sortedRecords.map(r => r.quantity);
+
+            renderChart(labels, values);
+
+            records.forEach(item => {
+                const d = new Date(item.date);
+
+                let usageMarkup = '<span class="consumption-zero">-</span>';
+                if (item.consumption > 0) {
+                    usageMarkup = `<span class="consumption-positive">-${item.consumption.toFixed(1)}</span>`;
+                } else if (item.consumption < 0) {
+                    usageMarkup = `<span class="consumption-negative">+${Math.abs(item.consumption).toFixed(1)}</span>`;
+                }
+
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td style="font-weight: 500;">
+                        ${d.toLocaleDateString('ru-RU')}
+                    </td>
+                    <td style="text-align: right; font-weight: 600; font-variant-numeric: tabular-nums;">
+                        ${item.quantity}
+                    </td>
+                    <td style="text-align: right; font-variant-numeric: tabular-nums;">
+                        ${usageMarkup}
+                    </td>
+                    <td style="text-align: center;">
+                        ${item.quantity === 0 ? '<span class="badge badge-danger">Пусто</span>' : '<span class="badge badge-success">OK</span>'}
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        } catch (e) {
+            console.error(e);
+            tbody.innerHTML = `
+                <tr><td colspan="4" style="text-align: center; color: var(--danger); padding: 32px">
+                    Ошибка загрузки истории.
+                </td></tr>
+            `;
+        }
+    }
+
+    function renderChart(labels, data) {
+        const ctx = document.getElementById('historyChart').getContext('2d');
+
+        if (historyChart) {
+            historyChart.destroy();
+        }
+
+        const gradient = ctx.createLinearGradient(0, 0, 0, 350);
+        gradient.addColorStop(0, 'rgba(99, 102, 241, 0.2)');
+        gradient.addColorStop(1, 'rgba(99, 102, 241, 0)');
+
+        historyChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Остаток',
+                    data: data,
+                    borderColor: '#6366f1',
+                    borderWidth: 3,
+                    backgroundColor: gradient,
+                    fill: true,
+                    tension: 0.4,
+                    pointBackgroundColor: '#fff',
+                    pointBorderColor: '#6366f1',
+                    pointBorderWidth: 2,
+                    pointRadius: 4,
+                    pointHoverRadius: 6
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false,
+                        padding: 12,
+                        backgroundColor: '#1e293b',
+                        titleFont: { size: 14, weight: '600' },
+                        bodyFont: { size: 13 },
+                        callbacks: {
+                            label: function (context) {
+                                return `Остаток: ${context.parsed.y}`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: { display: false }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        grid: { borderDash: [4, 4], color: 'rgba(0,0,0,0.05)' }
+                    }
+                }
+            }
+        });
+    }
+</script>
+{% endblock %}

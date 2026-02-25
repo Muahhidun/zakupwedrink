@@ -7,6 +7,7 @@ from datetime import datetime
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from aiogram import Bot
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +18,7 @@ async def send_auto_purchase_order(bot: Bot):
     Отправляется в 12:00 по Астане
     """
     try:
-        from database_pg import DatabasePG
+        from database import Database
         from utils.calculations import get_auto_order_with_threshold, format_auto_order_list
         from handlers.orders import prepare_order_data
 
@@ -26,7 +27,7 @@ async def send_auto_purchase_order(bot: Bot):
             logger.warning("⚠️ DATABASE_URL не установлен")
             return
 
-        db = DatabasePG(database_url)
+        db = Database("wedrink.db")
         await db.init_db()
 
         logger.info("🔍 Рассчитываю автоматический заказ на 14 дней...")
@@ -92,14 +93,9 @@ async def check_and_send_reminder(bot: Bot, group_chat_id: str, reminder_type: s
     """
     try:
         # Импортируем здесь чтобы избежать циклических зависимостей
-        from database_pg import DatabasePG
+        from database import Database
 
-        database_url = os.getenv('DATABASE_URL')
-        if not database_url:
-            logger.warning("⚠️ DATABASE_URL не установлен")
-            return
-
-        db = DatabasePG(database_url)
+        db = Database("wedrink.db")
         await db.init_db()
 
         # Проверяем были ли введены остатки сегодня
@@ -144,12 +140,19 @@ async def check_and_send_reminder(bot: Bot, group_chat_id: str, reminder_type: s
 
         message = messages.get(reminder_type, messages['morning'])
 
+        # Кнопка для перехода в Web App
+        web_app_url = os.getenv('WEB_APP_URL', 'http://localhost:5005')
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="📝 Ввести остатки (Web)", web_app=WebAppInfo(url=f"{web_app_url}/stock_input"))]
+        ])
+
         # Отправляем в группу
         try:
             await bot.send_message(
                 chat_id=group_chat_id,
                 text=message,
-                parse_mode="HTML"
+                parse_mode="HTML",
+                reply_markup=keyboard
             )
             logger.info(f"✅ Напоминание ({reminder_type}) отправлено в группу {group_chat_id}")
         except Exception as e:
@@ -165,7 +168,8 @@ async def check_and_send_reminder(bot: Bot, group_chat_id: str, reminder_type: s
                 await bot.send_message(
                     chat_id=user_id,
                     text=message,
-                    parse_mode="HTML"
+                    parse_mode="HTML",
+                    reply_markup=keyboard
                 )
                 success_count += 1
             except Exception as e:

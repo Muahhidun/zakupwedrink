@@ -1,0 +1,186 @@
+{% extends "layout.html" %}
+
+{% block title %}Заказы | WeDrink{% endblock %}
+{% block page_title %}Формирование Заказа{% endblock %}
+{% block nav_orders %}active{% endblock %}
+
+{% block content %}
+<div class="fade-in-up">
+    <div class="card" style="margin-bottom: 24px;">
+        <h2 style="font-size: 16px; margin-bottom: 16px;">Параметры расчета</h2>
+        <div style="display: flex; flex-direction: column; gap: 20px;">
+            <!-- Период заказа -->
+            <div>
+                <div
+                    style="font-size: 13px; color: var(--text-tertiary); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">
+                    Период заказа (на сколько дней)</div>
+                <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">
+                    <button class="btn btn-primary" onclick="generateOrder(10)"
+                        style="background: var(--primary); border: none;">
+                        <span class="material-symbols-rounded">calendar_view_week</span> 10 дней
+                    </button>
+                    <button class="btn btn-primary" onclick="generateOrder(20)"
+                        style="background: var(--info); border: none;">
+                        <span class="material-symbols-rounded">date_range</span> 20 дней
+                    </button>
+                    <button class="btn" onclick="generateOrder(30)"
+                        style="background: var(--text-secondary); color: white; border: none;">
+                        <span class="material-symbols-rounded">calendar_month</span> 30 дней
+                    </button>
+
+                    <div style="height: 24px; width: 1px; background: var(--border-color); margin: 0 8px;"></div>
+
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <input type="number" id="customDays" placeholder="Свой вариант" min="1" max="365"
+                            style="width: 120px; padding: 10px 14px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-surface); color: var(--text-primary);">
+                        <button class="btn" onclick="generateOrder(document.getElementById('customDays').value)"
+                            style="background: var(--bg-surface-hover); border: 1px solid var(--border-color);">
+                            OK
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Период анализа -->
+            <div>
+                <div
+                    style="font-size: 13px; color: var(--text-tertiary); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">
+                    Период анализа расхода (ретроспектива)</div>
+                <select id="lookbackPeriod"
+                    style="padding: 10px 14px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-surface); color: var(--text-primary); cursor: pointer;">
+                    <option value="14">Последние 14 дней</option>
+                    <option value="30" selected>Последние 30 дней (рекомендуется)</option>
+                    <option value="60">Последние 60 дней</option>
+                    <option value="90">Последние 90 дней</option>
+                </select>
+                <span style="font-size: 12px; color: var(--text-tertiary); margin-left: 12px;">Чем больше период, тем
+                    точнее средний расход</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Results Table Container -->
+    <div class="card" style="padding: 0; overflow: hidden; display: none;" id="orderResultContainer">
+        <div
+            style="padding: 24px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <h3 style="margin-bottom: 4px;" id="orderTitle">План закупа</h3>
+                <div style="color: var(--text-secondary); font-size: 14px;" id="orderMeta"></div>
+            </div>
+            <div style="text-align: right;">
+                <div style="font-size: 12px; color: var(--text-secondary); text-transform: uppercase;">Итого</div>
+                <div style="font-size: 24px; font-weight: 700; color: var(--primary);" id="orderTotal">0 ₸</div>
+            </div>
+        </div>
+
+        <div class="table-container">
+            <table class="table" id="orderTable">
+                <thead>
+                    <tr>
+                        <th style="width: 40%">Товар</th>
+                        <th style="text-align: center;">К заказу (уп.)</th>
+                        <th style="text-align: right;">Цена за уп.</th>
+                        <th style="text-align: right; padding-right: 32px;">Сумма</th>
+                    </tr>
+                </thead>
+                <tbody id="orderTableBody">
+                </tbody>
+            </table>
+        </div>
+
+        <div
+            style="padding: 24px; background: var(--bg-surface-hover); border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 12px;">
+            <button class="btn btn-success" onclick="approveOrder()">
+                <span class="material-symbols-rounded">check</span> Утвердить заказ
+            </button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    async function generateOrder(days) {
+        if (!days || days < 1) {
+            showToast('Введите корректное количество дней', 'warning');
+            return;
+        }
+
+        const lookback = document.getElementById('lookbackPeriod').value;
+        showToast(`Рассчитываем заказ на ${days} дней (анализ за ${lookback} дн.)...`, 'info');
+
+        const container = document.getElementById('orderResultContainer');
+        const tbody = document.getElementById('orderTableBody');
+        const orderMeta = document.getElementById('orderMeta');
+
+        container.style.display = 'block';
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="4" style="text-align: center; padding: 40px; color: var(--text-tertiary);">
+                    <span class="material-symbols-rounded" style="animation: spin 1s linear infinite; font-size: 32px;">sync</span>
+                    <div style="margin-top: 12px;">Анализ расходов и формирование плана...</div>
+                </td>
+            </tr>
+        `;
+
+        try {
+            const res = await fetch(`/api/orders/generate?days=${days}&lookback=${lookback}`);
+            if (!res.ok) {
+                const errorData = await res.json();
+                throw new Error(errorData.error || 'Network error');
+            }
+            const data = await res.json();
+
+            document.getElementById('orderTitle').textContent = `План закупа на ${days} дней`;
+            orderMeta.textContent = `Средний расход рассчитан на основе данных за последние ${data.lookback_days} дней`;
+            document.getElementById('orderTotal').textContent = `${data.total_cost.toLocaleString()} ₸`;
+
+            tbody.innerHTML = '';
+
+            if (data.items.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 32px">Заказывать ничего не требуется</td></tr>';
+                return;
+            }
+
+            data.items.forEach(item => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>
+                        <div style="font-weight: 500">${item.name}</div>
+                        <div style="font-size: 13px; color: var(--text-tertiary); margin-top: 4px;">
+                            Дневной расход: ${item.daily_consumption.toFixed(2)} уп. | Остаток: ${item.current_stock.toFixed(1)}
+                        </div>
+                    </td>
+                    <td style="text-align: center; font-weight: 600; font-size: 16px; color: var(--primary);">
+                        ${item.order_boxes}
+                    </td>
+                    <td style="text-align: right; font-variant-numeric: tabular-nums;">
+                        ${item.price_per_box.toLocaleString()} ₸
+                    </td>
+                    <td style="text-align: right; padding-right: 32px; font-weight: 600; font-variant-numeric: tabular-nums;">
+                        ${item.item_total.toLocaleString()} ₸
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+        } catch (e) {
+            console.error(e);
+            tbody.innerHTML = `
+                <tr><td colspan="4" style="text-align: center; color: var(--danger); padding: 32px">
+                    <div style="font-weight: 600; margin-bottom: 8px;">Ошибка расчета</div>
+                    <div style="font-size: 14px; opacity: 0.8;">${e.message}</div>
+                    <div style="font-size: 13px; margin-top: 16px; color: var(--text-tertiary);">
+                        Обычно это означает, что за последние ${lookback} дней нет записей об остатках.<br>
+                        Попробуйте выбрать меньший период анализа или проверьте наличие данных в Истории.
+                    </div>
+                </td></tr>
+            `;
+        }
+    }
+
+    function approveOrder() {
+        showToast('Функция сохранения заказа в разработке', 'warning');
+    }
+</script>
+{% endblock %}

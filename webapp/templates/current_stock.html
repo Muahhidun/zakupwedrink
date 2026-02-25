@@ -1,0 +1,126 @@
+{% extends "layout.html" %}
+
+{% block title %}Склад | WeDrink{% endblock %}
+{% block page_title %}Текущие остатки{% endblock %}
+{% block nav_stock %}active{% endblock %}
+
+{% block content %}
+<div class="fade-in-up">
+    <!-- Header Actions -->
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+        <span class="text-secondary" id="lastUpdated" style="color: var(--text-secondary); font-size: 14px;">
+            <div class="skeleton-text"></div>
+        </span>
+        <button class="btn btn-primary" onclick="window.location.href='/stock_input'">
+            <span class="material-symbols-rounded">edit_square</span> Ввести остатки
+        </button>
+    </div>
+
+    <!-- Table Container -->
+    <div class="card" style="padding: 0; overflow: hidden;">
+        <div class="table-container">
+            <table class="table" id="currentStockTable">
+                <thead>
+                    <tr>
+                        <th style="width: 40%">Товар</th>
+                        <th style="text-align: right;">Остаток (уп.)</th>
+                        <th style="text-align: right;">Вес/Объем</th>
+                        <th style="text-align: center;">Статус</th>
+                    </tr>
+                </thead>
+                <tbody id="stockTableBody">
+                    <tr>
+                        <td colspan="4" style="text-align: center; padding: 32px; color: var(--text-tertiary);">
+                            <span class="material-symbols-rounded"
+                                style="animation: spin 1s linear infinite;">sync</span>
+                            <div style="margin-top: 8px;">Загрузка данных склада...</div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', loadCurrentStock);
+
+    async function loadCurrentStock() {
+        try {
+            const tbody = document.getElementById('stockTableBody');
+            const lastUpdatedLabel = document.getElementById('lastUpdated');
+
+            const [stockRes, productsRes] = await Promise.all([
+                fetch('/api/stock/latest'),
+                fetch('/api/products')
+            ]);
+
+            const stockData = await stockRes.json();
+            const productsInfo = await productsRes.json();
+
+            if (!stockRes.ok || !productsRes.ok) {
+                throw new Error('Failed to fetch data');
+            }
+
+            if (stockData.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 32px">Остатки не найдены</td></tr>';
+                lastUpdatedLabel.textContent = 'Нет данных';
+                return;
+            }
+
+            // Get date from first item
+            const lastDate = new Date(stockData[0].date);
+            lastUpdatedLabel.innerHTML = `<span class="material-symbols-rounded" style="font-size: 16px; vertical-align: text-bottom;">history</span> Обновлено: ${lastDate.toLocaleDateString()}`;
+
+            // Map product details
+            const getProductInfo = (pid) => productsInfo.find(p => p.id === pid) || {};
+
+            tbody.innerHTML = '';
+
+            // Sort to simulate "critical" sorting vs full
+            stockData.sort((a, b) => a.quantity === 0 ? -1 : 1);
+
+            stockData.forEach(item => {
+                const prod = getProductInfo(item.product_id);
+                const tr = document.createElement('tr');
+
+                // Determine Status Badge (simplified logic for now)
+                let statusBadge = '<span class="badge badge-success">В наличии</span>';
+                if (item.quantity === 0) {
+                    statusBadge = '<span class="badge badge-danger">Нет в наличии</span>';
+                    tr.style.backgroundColor = 'var(--danger-light)';
+                } else if (item.quantity < 2) {
+                    // arbitrary threshold for frontend demo
+                    statusBadge = '<span class="badge badge-warning">Заканчивается</span>';
+                }
+
+                tr.innerHTML = `
+                    <td>
+                        <div style="font-weight: 500">${prod.name_internal || item.name_russian || 'Неизвестный товар'}</div>
+                    </td>
+                    <td style="text-align: right; font-weight: 600; font-variant-numeric: tabular-nums;">
+                        ${item.quantity} шт
+                    </td>
+                    <td style="text-align: right; color: var(--text-secondary); font-variant-numeric: tabular-nums;">
+                        ${item.weight.toFixed(2)} ${prod.unit || 'кг'}
+                    </td>
+                    <td style="text-align: center;">
+                        ${statusBadge}
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+        } catch (e) {
+            console.error('Error fetching current stock:', e);
+            document.getElementById('stockTableBody').innerHTML = `
+                <tr><td colspan="4" style="text-align: center; color: var(--danger); padding: 32px">
+                    Ошибка загрузки данных
+                </td></tr>
+            `;
+        }
+    }
+</script>
+{% endblock %}

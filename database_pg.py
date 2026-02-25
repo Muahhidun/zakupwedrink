@@ -14,8 +14,13 @@ class DatabasePG:
 
     async def init_db(self):
         """Инициализация пула соединений и создание таблиц"""
-        # Создаем пул соединений
-        self.pool = await asyncpg.create_pool(self.database_url, min_size=1, max_size=10)
+        # Создаем пул соединений с поддержкой SSL для Railway
+        self.pool = await asyncpg.create_pool(
+            self.database_url,
+            min_size=1,
+            max_size=10,
+            ssl='require'
+        )
 
         async with self.pool.acquire() as conn:
             # Таблица товаров
@@ -60,13 +65,14 @@ class DatabasePG:
                 )
             """)
 
-            # Таблица пользователей (для рассылки напоминаний)
+            # Таблица пользователей
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS users (
                     id BIGINT PRIMARY KEY,
                     username TEXT,
                     first_name TEXT,
                     last_name TEXT,
+                    role TEXT DEFAULT 'user',
                     is_active BOOLEAN DEFAULT TRUE,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -93,6 +99,33 @@ class DatabasePG:
                     boxes_ordered INTEGER NOT NULL,
                     weight_ordered REAL NOT NULL,
                     cost REAL NOT NULL
+                )
+            """)
+
+            # Таблица заявок на ввод остатков
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS pending_stock_submissions (
+                    id SERIAL PRIMARY KEY,
+                    submitted_by BIGINT NOT NULL REFERENCES users(id),
+                    submission_date DATE NOT NULL,
+                    status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    reviewed_at TIMESTAMP,
+                    reviewed_by BIGINT REFERENCES users(id),
+                    rejection_reason TEXT
+                )
+            """)
+
+            # Позиции заявки
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS pending_stock_items (
+                    id SERIAL PRIMARY KEY,
+                    submission_id INTEGER NOT NULL REFERENCES pending_stock_submissions(id) ON DELETE CASCADE,
+                    product_id INTEGER NOT NULL REFERENCES products(id),
+                    quantity REAL NOT NULL,
+                    weight REAL NOT NULL,
+                    edited_quantity REAL,
+                    edited_weight REAL
                 )
             """)
 
@@ -162,6 +195,51 @@ class DatabasePG:
                 VALUES ($1, $2, $3, $4, $5)
             """, product_id, date, boxes, weight, cost)
 
+    async def get_supply_total(self, date) -> float:
+        """Получить общую сумму поставок за день"""
+        if isinstance(date, str):
+            from datetime import datetime
+            date = datetime.strptime(date, '%Y-%m-%d').date()
+        async with self.pool.acquire() as conn:
+            total = await conn.fetchval("SELECT SUM(cost) FROM supplies WHERE date = $1", date)
+            return float(total) if total else 0.0
+
+    async def get_supply_total_period(self, start_date, end_date) -> float:
+        """Получить общую сумму поставок за период"""
+        from datetime import datetime, date
+        if isinstance(start_date, str):
+            start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
+        if isinstance(end_date, str):
+            end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
+        async with self.pool.acquire() as conn:
+            total = await conn.fetchval("SELECT SUM(cost) FROM supplies WHERE date BETWEEN $1 AND $2", start_date, end_date)
+            return float(total) if total else 0.0
+
+    async def get_latest_date_before(self, date_val) -> Optional[datetime]:
+        """Получить последнюю дату с остатками до указанной даты"""
+        if isinstance(date_val, str):
+            from datetime import datetime
+            date_val = datetime.strptime(date_val, '%Y-%m-%d').date()
+        async with self.pool.acquire() as conn:
+            return await conn.fetchval("SELECT MAX(date) FROM stock WHERE date < $1", date_val)
+
+    async def get_supplies_between(self, start_date, end_date) -> List[Dict]:
+        """Получить детальные поставки между датами"""
+        from datetime import datetime, date
+        if isinstance(start_date, str):
+            start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
+        if isinstance(end_date, str):
+            end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch("""
+                SELECT s.product_id, s.boxes, s.date,
+                       p.units_per_box, p.package_weight, p.name_internal
+                FROM supplies s
+                JOIN products p ON s.product_id = p.id
+                WHERE s.date > $1 AND s.date <= $2
+            """, start_date, end_date)
+            return [dict(row) for row in rows]
+
     async def get_stock_by_date(self, date) -> List[Dict]:
         """Получить остатки на дату (date может быть str или date)"""
         # Конвертируем строку в date объект если нужно
@@ -197,6 +275,9 @@ class DatabasePG:
 
     async def has_stock_for_date(self, date) -> bool:
         """Проверить наличие остатков за конкретную дату"""
+        if isinstance(date, str):
+            from datetime import datetime
+            date = datetime.strptime(date, '%Y-%m-%d').date()
         async with self.pool.acquire() as conn:
             count = await conn.fetchval("""
                 SELECT COUNT(*) FROM stock WHERE date = $1
@@ -262,74 +343,91 @@ class DatabasePG:
                 LEFT JOIN stock s1 ON p.id = s1.product_id AND s1.date = $1
                 LEFT JOIN stock s2 ON p.id = s2.product_id AND s2.date = $2
                 WHERE s1.weight IS NOT NULL AND s2.weight IS NOT NULL
-                ORDER BY cost DESC
             """, start_date_obj, end_date_obj)
+
             return [dict(row) for row in rows]
 
-    async def calculate_consumption_period(self, start_date, end_date) -> List[Dict]:
-        """
-        Расчет расхода за период (работает даже с пропущенными датами)
-        Использует самую раннюю и самую позднюю дату с данными в периоде
-        """
-        from datetime import datetime, date
-
-        # Конвертируем в date объекты
-        if isinstance(start_date, str):
-            start_date_obj = datetime.strptime(start_date, '%Y-%m-%d').date()
-        elif isinstance(start_date, date):
-            start_date_obj = start_date
-        else:
-            raise ValueError(f"start_date должен быть str или date")
-
-        if isinstance(end_date, str):
-            end_date_obj = datetime.strptime(end_date, '%Y-%m-%d').date()
-        elif isinstance(end_date, date):
-            end_date_obj = end_date
-        else:
-            raise ValueError(f"end_date должен быть str или date")
-
-        # Находим самую раннюю и самую позднюю дату с данными в периоде
+    async def get_stock_with_consumption(self, lookback_days: int = 14) -> List[Dict]:
+        """Остатки с расчётом потребления с учетом поставок (PostgreSQL)"""
         async with self.pool.acquire() as conn:
-            result = await conn.fetchrow("""
-                SELECT
-                    MIN(date) as earliest_date,
-                    MAX(date) as latest_date
-                FROM stock
-                WHERE date >= $1 AND date <= $2
-            """, start_date_obj, end_date_obj)
-
-            if not result or not result['earliest_date'] or not result['latest_date']:
-                return []
-
-            earliest = result['earliest_date']
-            latest = result['latest_date']
-
-            # Если одна и та же дата - нет расхода
-            if earliest == latest:
-                return []
-
-            # Рассчитываем расход между earliest и latest
             rows = await conn.fetch("""
+                WITH latest_dates AS (
+                    SELECT product_id, MAX(date) as max_date
+                    FROM stock
+                    GROUP BY product_id
+                ),
+                first_dates AS (
+                    SELECT product_id, MIN(date) as min_date
+                    FROM stock
+                    WHERE date >= CURRENT_DATE - ($1::integer * INTERVAL '1 day')
+                    GROUP BY product_id
+                )
                 SELECT
-                    p.id,
-                    p.name_internal,
-                    p.name_russian,
-                    p.price_per_box,
-                    p.box_weight,
-                    p.unit,
-                    s1.weight as weight_start,
-                    s2.weight as weight_end,
-                    (s1.weight - s2.weight) as consumed_weight,
-                    ((s1.weight - s2.weight) / p.box_weight * p.price_per_box) as cost
+                    p.id AS product_id, p.name_internal, p.name_russian,
+                    p.package_weight, p.units_per_box, p.box_weight, p.price_per_box, p.unit,
+                    s_last.quantity  AS quantity,
+                    s_last.weight    AS weight,
+                    s_last.date      AS last_date,
+                    s_first.weight   AS first_weight,
+                    s_first.date     AS first_date,
+                    (SELECT COALESCE(SUM(weight), 0) FROM supplies 
+                     WHERE product_id = p.id 
+                       AND date > fd.min_date AND date <= ld.max_date) as supply_weight,
+                    (SELECT COALESCE(SUM(poi.weight_ordered), 0) 
+                     FROM pending_order_items poi 
+                     JOIN pending_orders po ON poi.order_id = po.id 
+                     WHERE poi.product_id = p.id AND po.status = 'pending') as pending_weight
                 FROM products p
-                LEFT JOIN stock s1 ON p.id = s1.product_id AND s1.date = $1
-                LEFT JOIN stock s2 ON p.id = s2.product_id AND s2.date = $2
-                WHERE s1.weight IS NOT NULL AND s2.weight IS NOT NULL
-                  AND p.unit != 'шт'
-                ORDER BY cost DESC
-            """, earliest, latest)
-
-            return [dict(row) for row in rows]
+                JOIN latest_dates ld ON p.id = ld.product_id
+                JOIN stock s_last ON ld.product_id = s_last.product_id AND ld.max_date = s_last.date
+                LEFT JOIN first_dates fd ON p.id = fd.product_id
+                LEFT JOIN stock s_first ON fd.product_id = s_first.product_id AND fd.min_date = s_first.date
+                ORDER BY p.name_internal
+            """, lookback_days)
+            
+            result = []
+            for r in rows:
+                d = dict(r)
+                fw = d.pop('first_weight', None)
+                fd_val = d.pop('first_date', None)
+                ld_val = d.get('last_date')
+                sw = d.pop('supply_weight', 0)
+                pw = d.get('pending_weight', 0)
+                
+                # Считаем реальное количество дней между замерами
+                actual_days = 0
+                if fd_val and ld_val:
+                    actual_days = (ld_val - fd_val).days
+                
+                if fw is not None and d.get('weight') is not None and actual_days > 0:
+                    # Расчет потребления: (начальный вес + поставки - конечный вес) / количество дней
+                    fw_val = float(fw) if fw is not None else 0.0
+                    sw_val = float(sw) if sw is not None else 0.0
+                    curr_weight = float(d['weight']) if d['weight'] is not None else 0.0
+                    consumed = fw_val + sw_val - curr_weight
+                    d['avg_daily_consumption'] = max(0.0, consumed / actual_days)
+                else:
+                    d['avg_daily_consumption'] = 0.0
+                
+                # Дни до обнуления считаем С УЧЕТОМ того, что УЖЕ заказано (pending_weight)
+                current_weight = float(d['weight'] or 0)
+                pending_weight = float(pw or 0)
+                total_potential_weight = current_weight + pending_weight
+                
+                d['days_remaining'] = (
+                    round(total_potential_weight / d['avg_daily_consumption'])
+                    if d.get('avg_daily_consumption', 0) > 0 else 999
+                )
+                
+                # Приводим типы к стандартным для JSON
+                for key in ['quantity', 'weight', 'package_weight', 'box_weight', 'price_per_box']:
+                    if d.get(key) is not None:
+                        d[key] = float(d[key])
+                if d.get('last_date'):
+                    d['last_date'] = str(d['last_date'])
+                
+                result.append(d)
+            return result
 
     async def get_stock_dates_summary(self) -> List[Dict]:
         """Получить сводку по датам с остатками"""
@@ -404,20 +502,16 @@ class DatabasePG:
 
     # ============ USER ROLES ============
 
-    async def update_user_role(self, user_id: int, role: str, added_by: int, display_name: str = None):
-        """Установить роль пользователя"""
-        async with self.pool.acquire() as conn:
-            await conn.execute("""
-                UPDATE users
-                SET role = $1, added_by = $2, added_at = CURRENT_TIMESTAMP, display_name = $4
-                WHERE id = $3
-            """, role, added_by, user_id, display_name)
-
     async def get_user_role(self, user_id: int) -> str:
-        """Получить роль пользователя"""
+        """Получить роль пользователя. По умолчанию 'user'."""
         async with self.pool.acquire() as conn:
             role = await conn.fetchval("SELECT role FROM users WHERE id = $1", user_id)
-            return role or 'employee'
+            return role or 'user'
+
+    async def set_user_role(self, user_id: int, role: str):
+        """Установить роль пользователя (admin / manager / user)."""
+        async with self.pool.acquire() as conn:
+            await conn.execute("UPDATE users SET role = $1 WHERE id = $2", role, user_id)
 
     async def list_users_with_roles(self) -> List[Dict]:
         """Список всех пользователей с ролями"""
@@ -559,7 +653,7 @@ class DatabasePG:
 
                 return submission['submitted_by']
 
-    async def reject_submission(self, submission_id: int, admin_id: int, reason: str):
+    async def reject_submission(self, submission_id: int, admin_id: int, reason: str = None):
         """Отклонить заявку"""
         async with self.pool.acquire() as conn:
             submitted_by = await conn.fetchval("""

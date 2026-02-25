@@ -463,3 +463,49 @@ def calculate_daily_cost(consumption_data: List[Dict]) -> Tuple[float, str]:
         )
 
     return total_cost, "\n".join(lines)
+
+
+async def calculate_order(db, days: int, lookback_days: int = 30) -> Dict:
+    """
+    Рассчитывает необходимое количество товара для заказа на заданное число дней.
+    lookback_days: за сколько дней анализировать расход для среднего значения.
+    """
+    try:
+        # Получаем данные об остатках и расходе за указанный период ретроспективы
+        stock_data = await db.get_stock_with_consumption(lookback_days=lookback_days)
+        
+        # Получаем список для заказа на указанное кол-во дней вперед
+        products_to_order = get_products_to_order(
+            stock_data,
+            days_threshold=days,  # Порог закупа равен количеству планируемых дней
+            order_days=days,
+            use_02_rule=True,
+            include_pending=True
+        )
+        
+        total_cost = sum(p['order_cost'] for p in products_to_order)
+        
+        # Форматируем под формат ответа API
+        api_items = []
+        for p in products_to_order:
+            api_items.append({
+                'product_id': p['product_id'],
+                'name': p['name_russian'],
+                'daily_consumption': p['avg_daily_consumption'],
+                'current_stock': p['current_stock'],
+                'needed_quantity': p['needed_weight'],
+                'order_boxes': p['boxes_to_order'],
+                'price_per_box': p['price_per_box'],
+                'item_total': p['order_cost']
+            })
+            
+        return {
+            'days': days,
+            'lookback_days': lookback_days,
+            'total_cost': total_cost,
+            'items': api_items
+        }
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise e

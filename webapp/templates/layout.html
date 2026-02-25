@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>{% block title %}WeDrink System{% endblock %}</title>
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Material Symbols -->
+    <link
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200"
+        rel="stylesheet" />
+
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="/static/css/style.css">
+
+    {% block extra_css %}{% endblock %}
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Main Sidebar -->
+        <nav class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <span class="material-symbols-rounded logo-icon">water_drop</span>
+                    <span class="logo-text">WeDrink</span>
+                </div>
+                <button class="mobile-close-btn" id="closeSidebarBtn">
+                    <span class="material-symbols-rounded">close</span>
+                </button>
+            </div>
+
+            <div class="sidebar-user" id="sidebarUser">
+                <!-- User info will be loaded here via JS -->
+                <div class="user-avatar skeleton"></div>
+                <div class="user-details">
+                    <div class="user-name skeleton-text"></div>
+                    <div class="user-role skeleton-text"></div>
+                </div>
+            </div>
+
+            <ul class="nav-links">
+                <li class="nav-item admin-only" style="display: none;">
+                    <a href="/" class="nav-link {% block nav_dashboard %}{% endblock %}" data-route="/">
+                        <span class="material-symbols-rounded">dashboard</span>
+                        <span class="nav-text">Дашборд</span>
+                    </a>
+                </li>
+                <li class="nav-item admin-only" style="display: none;">
+                    <a href="/stock" class="nav-link {% block nav_stock %}{% endblock %}" data-route="/stock">
+                        <span class="material-symbols-rounded">inventory_2</span>
+                        <span class="nav-text">Склад</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="/stock_input" class="nav-link {% block nav_stock_input %}{% endblock %}"
+                        data-route="/stock_input">
+                        <span class="material-symbols-rounded">edit_square</span>
+                        <span class="nav-text">Ввод остатков</span>
+                    </a>
+                </li>
+                <li class="nav-item admin-only" style="display: none;">
+                    <a href="/supply" class="nav-link {% block nav_supply %}{% endblock %}" data-route="/supply">
+                        <span class="material-symbols-rounded">local_shipping</span>
+                        <span class="nav-text">Приемка</span>
+                    </a>
+                </li>
+                <li class="nav-item admin-only" style="display: none;">
+                    <a href="/orders" class="nav-link {% block nav_orders %}{% endblock %}" data-route="/orders">
+                        <span class="material-symbols-rounded">shopping_cart</span>
+                        <span class="nav-text">Заказы</span>
+                    </a>
+                </li>
+                <li class="nav-item admin-only" style="display: none;">
+                    <a href="/history" class="nav-link {% block nav_history %}{% endblock %}" data-route="/history">
+                        <span class="material-symbols-rounded">history</span>
+                        <span class="nav-text">История</span>
+                    </a>
+                </li>
+                <li class="nav-item admin-only" style="display: none;">
+                    <a href="/reports" class="nav-link {% block nav_reports %}{% endblock %}" data-route="/reports">
+                        <span class="material-symbols-rounded">bar_chart</span>
+                        <span class="nav-text">Аналитика</span>
+                    </a>
+                </li>
+            </ul>
+
+            <div class="sidebar-footer">
+                <a href="/logout" class="nav-link logout-link">
+                    <span class="material-symbols-rounded">logout</span>
+                    <span class="nav-text">Выйти</span>
+                </a>
+            </div>
+        </nav>
+
+        <!-- Overlay for mobile sidebar -->
+        <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <header class="top-header">
+                <button class="menu-btn" id="openSidebarBtn">
+                    <span class="material-symbols-rounded">menu</span>
+                </button>
+                <h1 class="page-title">{% block page_title %}WeDrink{% endblock %}</h1>
+                <div class="header-actions">
+                    {% block header_actions %}{% endblock %}
+                </div>
+            </header>
+
+            <div class="content-body">
+                {% block content %}{% endblock %}
+            </div>
+        </main>
+    </div>
+
+    <!-- Global JS -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="/static/js/app.js"></script>
+    {% block extra_js %}{% endblock %}
+</body>
+
+</html>
