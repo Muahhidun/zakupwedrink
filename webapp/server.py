@@ -147,27 +147,25 @@ def verify_telegram_auth(data: dict, bot_token: str) -> bool:
     """Verifies Telegram login widget data"""
     if 'hash' not in data:
         return False
-        
+
     received_hash = data.pop('hash')
+
+    # Filter only relevant fields
+    valid_fields = ['id', 'first_name', 'last_name', 'username', 'photo_url', 'auth_date']
+    data_check_list = []
+    for k, v in data.items():
+        if k in valid_fields and v is not None:
+            data_check_list.append(f"{k}={v}")
     
-    # Telegram auth fields according to documentation
-    valid_fields = {'auth_date', 'first_name', 'last_name', 'id', 'photo_url', 'username'}
+    data_check_string = "\n".join(sorted(data_check_list))
     
-    # Filter only valid telegram fields and ignore everything else
-    filtered_data = {k: v for k, v in data.items() if k in valid_fields}
-    
-    # Sort keys alphabetically and format as key=value
-    data_check_string = '\n'.join(f"{k}={v}" for k, v in sorted(filtered_data.items()))
-    
-    # Calculate hash using SHA256
     secret_key = hashlib.sha256(bot_token.encode()).digest()
-    calculated_hash = hmac.new(
-        secret_key, 
-        data_check_string.encode(), 
-        hashlib.sha256
-    ).hexdigest()
+    hmac_hash = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
     
-    return calculated_hash == received_hash
+    is_valid = hmac_hash == received_hash
+    if not is_valid:
+        print(f"❌ Hash mismatch. Expected: {hmac_hash}, got: {received_hash}")
+    return is_valid
 
 
 async def telegram_login(request):
@@ -222,10 +220,12 @@ async def login_page(request):
         
     bot_username = os.getenv('BOT_USERNAME', 'Zakupformbot')
     
-    # Формируем абсолютный URL для callback (Telegram иногда капризничает с относительными)
-    protocol = request.headers.get('X-Forwarded-Proto', request.url.scheme)
-    host = request.headers.get('X-Forwarded-Host', request.host)
-    auth_url = f"{protocol}://{host}/api/auth/telegram"
+    # Используем относительный путь для callback - это самый надежный способ
+    auth_url = "/api/auth/telegram"
+    
+    # Логируем для отладки
+    host = request.headers.get('Host', request.host)
+    print(f"📱 Serving login page. Host: {host}, Bot: {bot_username}")
     
     context = {
         'bot_username': bot_username,
