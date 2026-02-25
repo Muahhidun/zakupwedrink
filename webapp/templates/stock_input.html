@@ -61,6 +61,11 @@
         transition: left var(--transition-normal);
     }
 
+    /* Hide mobile elements on desktop by default */
+    .mobile-consumption {
+        display: none;
+    }
+
     /* Mobile adjustments */
     @media (max-width: 600px) {
         .bottom-actions {
@@ -454,16 +459,49 @@
 
         try {
             const stockData = [];
+            let hasEmptyFields = false;
+            let firstEmptyInput = null;
+
+            // Reset borders first
+            document.querySelectorAll('.qty-input').forEach(i => i.style.borderColor = 'var(--border-color)');
+
             products.forEach(p => {
-                const qty = parseFloat(document.getElementById(`qty-${p.id}`).value) || 0;
-                if (qty > 0) {
+                const input = document.getElementById(`qty-${p.id}`);
+                const val = input.value;
+
+                // Проверяем, что поле не пустое
+                if (val === '') {
+                    hasEmptyFields = true;
+                    input.style.borderColor = 'var(--danger)';
+                    if (!firstEmptyInput) firstEmptyInput = input;
+                    return;
+                }
+
+                const qty = parseFloat(val);
+                // Отрицательные значения не допускаем, валидно >= 0
+                if (!isNaN(qty) && qty >= 0) {
                     stockData.push({
                         product_id: p.id,
                         quantity: qty,
                         weight: qty * p.package_weight
                     });
+                } else {
+                    hasEmptyFields = true;
+                    input.style.borderColor = 'var(--danger)';
+                    if (!firstEmptyInput) firstEmptyInput = input;
                 }
             });
+
+            if (hasEmptyFields) {
+                showToast('Пожалуйста, заполните остатки для всех товаров', 'warning');
+                if (firstEmptyInput) {
+                    firstEmptyInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    firstEmptyInput.focus();
+                }
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+                return;
+            }
 
             if (stockData.length === 0) {
                 showToast('Укажите количество хотя бы для одного товара', 'warning');
