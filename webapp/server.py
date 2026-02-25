@@ -120,11 +120,11 @@ async def auth_middleware(request, handler):
     public_paths = [
         '/api/auth/telegram',
         '/login',
-        '/static'
+        '/static',
+        '/favicon.ico'
     ]
     
     # Разрешаем запросы из Mini App (без сессии, по Telegram InitData)
-    # Это временное решение, пока полностью не перейдем на сессии
     if request.path.startswith('/api/') and 'x-telegram-init-data' in request.headers:
         return await handler(request)
 
@@ -134,8 +134,10 @@ async def auth_middleware(request, handler):
         user = await get_current_user(request)
         if not user:
             if request.path.startswith('/api/'):
+                print(f"🔒 Unauthorized API access to {request.path}")
                 return safe_json_response({'error': 'Unauthorized'}, status=401)
             else:
+                print(f"🔒 Redirecting to /login from {request.path}")
                 raise web.HTTPFound('/login')
                 
     return await handler(request)
@@ -171,12 +173,15 @@ def verify_telegram_auth(data: dict, bot_token: str) -> bool:
 async def telegram_login(request):
     """API: Обработка входа через Telegram Login Widget"""
     data = dict(request.query)
+    print(f"🔑 Telegram Auth Callback received: {json.dumps(data)}")
     
     bot_token = os.getenv('BOT_TOKEN')
     if not bot_token:
+        print("❌ Error: BOT_TOKEN not found in environment")
         return safe_json_response({'error': 'Server configuration error'}, status=500)
         
     if not verify_telegram_auth(data.copy(), bot_token):
+        print("❌ Error: Telegram hash verification failed")
         return safe_json_response({'error': 'Invalid Telegram authentication'}, status=403)
         
     # Check auth date (prevent replay attacks, e.g. 24h)
@@ -215,39 +220,19 @@ async def login_page(request):
     if user:
         raise web.HTTPFound('/')
         
-    html_path = Path(__file__).parent / 'templates' / 'login.html'
+    bot_username = os.getenv('BOT_USERNAME', 'Zakupformbot')
     
-    # Если файла еще нет, отдаем базовую заглушку со скриптом
-    if not html_path.exists():
-        bot_username = os.getenv('BOT_USERNAME', 'wedrink_bot') # Fallback if not set
-        html_content = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="utf-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1">
-            <title>WeDrink Login</title>
-            <style>
-                body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background-color: #f0f2f5; }}
-                .login-container {{ background: white; padding: 40px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); text-align: center; }}
-                h1 {{ margin-top: 0; color: #1c1e21; }}
-                p {{ color: #606770; margin-bottom: 24px; }}
-            </style>
-        </head>
-        <body>
-            <div class="login-container">
-                <h1>WeDrink System</h1>
-                <p>Войдите через Telegram для доступа к системе</p>
-                <script async src="https://telegram.org/js/telegram-widget.js?22" data-telegram-login="{bot_username}" data-size="large" data-auth-url="/api/auth/telegram" data-request-access="write"></script>
-            </div>
-        </body>
-        </html>
-        """
-        return web.Response(text=html_content, content_type='text/html')
-        
-    with open(html_path, 'r', encoding='utf-8') as f:
-        html_content = f.read()
-    return web.Response(text=html_content, content_type='text/html')
+    # Формируем абсолютный URL для callback (Telegram иногда капризничает с относительными)
+    protocol = request.headers.get('X-Forwarded-Proto', request.url.scheme)
+    host = request.headers.get('X-Forwarded-Host', request.host)
+    auth_url = f"{protocol}://{host}/api/auth/telegram"
+    
+    context = {
+        'bot_username': bot_username,
+        'auth_url': auth_url
+    }
+    
+    return aiohttp_jinja2.render_template('login.html', request, context)
 
 
 async def logout(request):
@@ -891,16 +876,30 @@ def create_app():
     templates_dir = Path(__file__).parent / 'templates'
     aiohttp_jinja2.setup(app, loader=jinja2.FileSystemLoader(str(templates_dir)))
 
-    # Настройка сессий (ключ должен быть сгенерирован и сохранен в .env, но для простоты генерируем тут)
-    # В production использовать: Fernet.generate_key()
+    # Настройка сессий (ключ в .env)
     session_key = os.getenv('SESSION_KEY')
     if not session_key:
         session_key = os.urandom(32)
         print("⚠️ Сгенерирован временный ключ для сессий. При перезапуске сервера всех разлогинит.")
     elif isinstance(session_key, str):
+        # Если ключ передан как строка, пробуем его подготовить (нужно 32 байта)
         session_key = session_key.encode()
+        if len(session_key) > 32:
+            session_key = session_key[:32]
+        elif len(session_key) < 32:
+            session_key = session_key.ljust(32, b'\0')
     
-    aiohttp_session.setup(app, EncryptedCookieStorage(session_key, cookie_name='WeDrink_Session'))
+    # Настройка Cookie Storage
+    # Включаем HttpOnly и Secure для Railway (так как там HTTPS)
+    storage = EncryptedCookieStorage(
+        session_key, 
+        cookie_name='WeDrink_Session',
+        max_age=86400 * 30, # 30 дней
+        httponly=True,
+        secure=True,
+        samesite='Lax'
+    )
+    aiohttp_session.setup(app, storage)
 
     # Добавляем middleware для проверки авторизации
     app.middlewares.append(auth_middleware)
