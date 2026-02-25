@@ -62,14 +62,115 @@
     }
 
     /* Mobile adjustments */
-    @media (max-width: 768px) {
+    @media (max-width: 600px) {
         .bottom-actions {
             left: 0;
-            padding: 16px;
+            padding: 12px 16px;
         }
 
         .content-body {
+            padding: 12px;
             padding-bottom: 100px;
+        }
+
+        .card {
+            padding: 0;
+            border-radius: var(--radius-md);
+        }
+
+        /* Responsive Table */
+        .table thead {
+            display: none;
+            /* Hide headers on mobile */
+        }
+
+        .table,
+        .table tbody,
+        .table tr,
+        .table td {
+            display: block;
+            width: 100%;
+        }
+
+        .table tr {
+            position: relative;
+            padding: 16px;
+            border-bottom: 1px solid var(--border-color);
+            display: grid;
+            grid-template-areas:
+                "name name"
+                "stats input";
+            grid-template-columns: 1fr auto;
+            align-items: end;
+            gap: 12px;
+        }
+
+        .table tr:hover {
+            background-color: transparent;
+        }
+
+        .table td {
+            padding: 0 !important;
+            border: none !important;
+        }
+
+        .table td:nth-child(1) {
+            grid-area: name;
+            margin-bottom: 4px;
+        }
+
+        /* Container for Yesterday and Consumption */
+        .table td:nth-child(2),
+        .table td:nth-child(3) {
+            display: inline-flex;
+            align-items: center;
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        .table td:nth-child(2) {
+            grid-area: stats;
+            justify-self: start;
+        }
+
+        /* Insert labels for stats */
+        .table td:nth-child(2)::before {
+            content: 'Вчера: ';
+            margin-right: 4px;
+            color: var(--text-tertiary);
+        }
+
+        .table td:nth-child(3) {
+            display: none;
+            /* Combine or hide on mobile if too crowded */
+        }
+
+        /* Show consumption as a small badge next to yesterday */
+        .mobile-consumption {
+            display: inline-flex;
+            margin-left: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .mobile-consumption::before {
+            content: 'Расход: ';
+            margin-right: 4px;
+            color: var(--text-tertiary);
+            font-weight: 400;
+        }
+
+        .table td:nth-child(4) {
+            grid-area: input;
+        }
+
+        .qty-input {
+            width: 90px;
+            height: 44px;
+            font-size: 18px;
+            border-color: var(--primary);
+            background-color: var(--primary-light);
+            color: var(--primary);
         }
     }
 
@@ -276,6 +377,7 @@
                 </td>
                 <td style="text-align: center; font-variant-numeric: tabular-nums;">
                     <span class="badge ${expected > 0 ? 'badge-success' : ''}" style="background: transparent; color: inherit">${expectedDisplay}</span>
+                    <span id="mobile-consumption-${p.id}" class="mobile-consumption consumption-zero">-</span>
                 </td>
                 <td style="text-align: center;">
                     <span id="consumption-${p.id}" class="consumption-zero font-mono">-</span>
@@ -284,7 +386,7 @@
                     <input type="number" 
                            id="qty-${p.id}" 
                            class="qty-input" 
-                           min="0" step="0.5" value="0" 
+                           min="0" step="0.1" value="0" 
                            inputmode="decimal"
                            onfocus="if(this.value=='0') this.value=''"
                            onblur="if(this.value=='') this.value='0'; updateConsumption(${p.id})"
@@ -300,19 +402,24 @@
         const current = parseFloat(document.getElementById(`qty-${productId}`).value) || 0;
         const diff = expected - current;
 
-        const el = document.getElementById(`consumption-${productId}`);
-        if (!el) return;
+        const ids = [`consumption-${productId}`, `mobile-consumption-${productId}`];
+        ids.forEach(id => {
+            const el = document.getElementById(id);
+            if (!el) return;
 
-        if (diff > 0) {
-            el.textContent = `-${diff.toFixed(1)}`;
-            el.className = 'consumption-positive';
-        } else if (diff < 0) {
-            el.textContent = `+${Math.abs(diff).toFixed(1)}`;
-            el.className = 'consumption-negative';
-        } else {
-            el.textContent = '0';
-            el.className = 'consumption-zero';
-        }
+            const baseClass = el.classList.contains('mobile-consumption') ? 'mobile-consumption ' : '';
+
+            if (diff > 0) {
+                el.textContent = `-${diff.toFixed(1)}`;
+                el.className = `${baseClass}consumption-positive`;
+            } else if (diff < 0) {
+                el.textContent = `+${Math.abs(diff).toFixed(1)}`;
+                el.className = `${baseClass}consumption-negative`;
+            } else {
+                el.textContent = '0';
+                el.className = `${baseClass}consumption-zero`;
+            }
+        });
     }
 
     async function loadExistingData() {
