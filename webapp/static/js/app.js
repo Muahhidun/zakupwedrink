@@ -23,7 +23,7 @@ async function initApp() {
         const user = data.user;
 
         renderUserSidebar(user);
-        applyRoleRestrictions(user.role);
+        applyRoleRestrictions(user);
     } catch (e) {
         console.error('Error initializing app:', e);
     }
