@@ -460,6 +460,11 @@ class DatabasePG:
             role = await conn.fetchval("SELECT role FROM users WHERE id = $1", user_id)
             return role if role else 'user'
 
+    async def update_user_role(self, user_id: int, new_role: str):
+        """Обновление роли пользователя"""
+        async with self.pool.acquire() as conn:
+            await conn.execute("UPDATE users SET role = $1 WHERE id = $2", new_role, user_id)
+
     async def set_user_role(self, user_id: int, role: str):
         """Установить роль пользователю"""
         async with self.pool.acquire() as conn:
