@@ -250,6 +250,7 @@ async def get_current_user_api(request):
     """API: Получить текущего пользователя"""
     user = await get_current_user(request)
     if user:
+        user['is_superadmin'] = (user.get('role') == 'admin' and user.get('company_id') == 1)
         return safe_json_response({'user': user})
     return safe_json_response({'error': 'Not logged in'}, status=401)
 
