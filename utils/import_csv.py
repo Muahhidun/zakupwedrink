@@ -46,7 +46,7 @@ def parse_number(value: str) -> float:
         return 0.0
 
 
-async def import_products_from_csv(csv_path: str, db) -> int:
+async def import_products_from_csv(csv_path: str, db, company_id: int = 1) -> int:
     """
     Импорт товаров из CSV файла
     Возвращает количество импортированных товаров
@@ -116,6 +116,7 @@ async def import_products_from_csv(csv_path: str, db) -> int:
 
             try:
                 await db.add_product(
+                    company_id=company_id,
                     name_chinese=name_chinese,
                     name_russian=name_russian,
                     name_internal=name_internal,
@@ -132,7 +133,7 @@ async def import_products_from_csv(csv_path: str, db) -> int:
     return imported
 
 
-async def import_stock_from_csv(csv_path: str, db, date_columns: Dict[str, int]) -> int:
+async def import_stock_from_csv(csv_path: str, db, date_columns: Dict[str, int], company_id: int = 1) -> int:
     """
     Импорт остатков из CSV файла
     date_columns: словарь {дата: номер_колонки_с_весом}
@@ -154,7 +155,7 @@ async def import_stock_from_csv(csv_path: str, db, date_columns: Dict[str, int])
                 continue
 
             # Получаем товар из БД
-            product = await db.get_product_by_name(name_internal)
+            product = await db.get_product_by_name(company_id=company_id, name=name_internal)
             if not product:
                 continue
 
@@ -168,6 +169,7 @@ async def import_stock_from_csv(csv_path: str, db, date_columns: Dict[str, int])
 
                         try:
                             await db.add_stock(
+                                company_id=company_id,
                                 product_id=product['id'],
                                 date=date,
                                 quantity=quantity,
