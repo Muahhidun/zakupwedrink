@@ -193,9 +193,15 @@ async def telegram_login(request):
     last_name = data.get('last_name')
     photo_url = data.get('photo_url')
     
-    # Обновляем инфу о пользователе в БД. company_id пока None, БД сама сохранит старый если был.
+    # Обновляем инфу о пользователе в БД.
     await db.add_or_update_user(user_id, username, first_name, last_name, company_id=None)
     
+    # Делаем пользователя Супер-Админом (admin), если он первый в базе Staging
+    async with db.pool.acquire() as conn:
+        admin_check = await conn.fetchval("SELECT count(*) FROM users WHERE role = 'admin'")
+        if admin_check == 0:
+            await conn.execute("UPDATE users SET role = 'admin' WHERE id = $1", user_id)
+
     user_info = await db.get_user_info(user_id)
     role = await db.get_user_role(user_id)
     company_id = user_info.get('company_id') if user_info and user_info.get('company_id') else 1
