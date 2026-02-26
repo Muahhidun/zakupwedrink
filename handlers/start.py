@@ -21,7 +21,8 @@ async def cmd_start(message: Message, db, user_role: str, is_admin: bool):
             import base64
             import json
             # Декодируем инвайт (токен base64 без padding)
-            padded_token = invite_token + '=' * (4 - len(invite_token) % 4)
+            padding_needed = (4 - len(invite_token) % 4) % 4
+            padded_token = invite_token + '=' * padding_needed
             decoded_bytes = base64.urlsafe_b64decode(padded_token)
             invite_data = json.loads(decoded_bytes.decode())
             
