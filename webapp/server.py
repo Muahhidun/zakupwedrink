@@ -1,5 +1,5 @@
 """
-Веб-сервер для Telegram Mini App
+Веб-сервер для Telegram Mini App (SaaS Version)
 """
 from aiohttp import web
 import aiohttp_cors
@@ -35,7 +35,7 @@ db = None
 # Глобальный экземпляр бота для уведомлений
 bot_instance = None
 
-# Временное хранилище черновиков заказов (ключ: данные заказа)
+# Временное хранилище черновиков заказов
 draft_orders = {}
 
 
@@ -45,7 +45,6 @@ def set_bot_instance(bot):
     bot_instance = bot
 
 
-# Пользовательский JSON-сериализатор для поддержки дат из Postgres
 def json_serializer(obj):
     if hasattr(obj, 'isoformat'):
         return obj.isoformat()
@@ -59,7 +58,6 @@ def get_bot_instance():
     """Получить или создать экземпляр бота для уведомлений"""
     global bot_instance
     if bot_instance is None:
-        # Создаем bot для отправки уведомлений
         from aiogram import Bot
         from aiogram.client.default import DefaultBotProperties
         from aiogram.enums import ParseMode
@@ -105,18 +103,23 @@ async def close_db(app):
 
 async def get_current_user(request):
     """Вспомогательная функция для получения текущего пользователя из сессии"""
-
-    
     session = await aiohttp_session.get_session(request)
     if 'user' in session:
         return session['user']
     return None
 
+async def get_current_company(request):
+    """Получить ID компании текущего пользователя"""
+    user = await get_current_user(request)
+    if user and user.get('company_id'):
+        return user['company_id']
+    # Fallback для Staging Phase 1 (Все попадают в компанию 1)
+    return 1
+
 
 @web.middleware
 async def auth_middleware(request, handler):
-    """Мидлвар для проверки авторизации на API и защищенных страницах"""
-    # Пути, где авторизация НЕ нужна
+    """Мидлвар для проверки авторизации"""
     public_paths = [
         '/api/auth/telegram',
         '/login',
@@ -124,7 +127,6 @@ async def auth_middleware(request, handler):
         '/favicon.ico'
     ]
     
-    # Разрешаем запросы из Mini App (без сессии, по Telegram InitData)
     if request.path.startswith('/api/') and 'x-telegram-init-data' in request.headers:
         return await handler(request)
 
@@ -150,7 +152,6 @@ def verify_telegram_auth(data: dict, bot_token: str) -> bool:
 
     received_hash = data.pop('hash')
 
-    # Filter only relevant fields
     valid_fields = ['id', 'first_name', 'last_name', 'username', 'photo_url', 'auth_date']
     data_check_list = []
     for k, v in data.items():
@@ -182,7 +183,6 @@ async def telegram_login(request):
         print("❌ Error: Telegram hash verification failed")
         return safe_json_response({'error': 'Invalid Telegram authentication'}, status=403)
         
-    # Check auth date (prevent replay attacks, e.g. 24h)
     auth_date = int(data.get('auth_date', 0))
     if datetime.now().timestamp() - auth_date > 86400:
         return safe_json_response({'error': 'Authentication expired'}, status=403)
@@ -193,11 +193,13 @@ async def telegram_login(request):
     last_name = data.get('last_name')
     photo_url = data.get('photo_url')
     
-    # Обновляем инфу о пользователе в БД
-    await db.add_or_update_user(user_id, username, first_name, last_name)
-    role = await db.get_user_role(user_id)
+    # Обновляем инфу о пользователе в БД. company_id пока None, БД сама сохранит старый если был.
+    await db.add_or_update_user(user_id, username, first_name, last_name, company_id=None)
     
-    # Создаем/обновляем сессию
+    user_info = await db.get_user_info(user_id)
+    role = await db.get_user_role(user_id)
+    company_id = user_info.get('company_id') if user_info and user_info.get('company_id') else 1
+    
     session = await aiohttp_session.get_session(request)
     session['user'] = {
         'id': user_id,
@@ -205,10 +207,10 @@ async def telegram_login(request):
         'first_name': first_name,
         'last_name': last_name,
         'photo_url': photo_url,
-        'role': role
+        'role': role,
+        'company_id': company_id
     }
     
-    # Перенаправляем на главную после успешного входа
     raise web.HTTPFound('/')
 
 
@@ -219,11 +221,7 @@ async def login_page(request):
         raise web.HTTPFound('/')
         
     bot_username = os.getenv('BOT_USERNAME', 'Zakupformbot')
-    
-    # Используем относительный путь для callback - это самый надежный способ
     auth_url = "/api/auth/telegram"
-    
-    # Логируем для отладки
     host = request.headers.get('Host', request.host)
     print(f"📱 Serving login page. Host: {host}, Bot: {bot_username}")
     
@@ -251,17 +249,14 @@ async def get_current_user_api(request):
 
 
 async def dashboard_page(request):
-    """Страница Дашборда (Только для Админов)"""
     user = await get_current_user(request)
     if not user or user['role'] not in ['admin', 'manager']:
         raise web.HTTPFound('/')
-        
     context = {'user': user}
     return aiohttp_jinja2.render_template('dashboard.html', request, context)
 
 
 async def stock_input_page(request):
-    """Страница ввода остатков (доступна всем авторизованным)"""
     user = await get_current_user(request)
     if not user:
         raise web.HTTPFound('/login')
@@ -269,64 +264,52 @@ async def stock_input_page(request):
     return aiohttp_jinja2.render_template('stock_input.html', request, context)
 
 async def current_stock_page(request):
-    """Страница текущих остатков"""
     user = await get_current_user(request)
     if not user or user['role'] not in ['admin', 'manager']:
         raise web.HTTPFound('/')
-        
     context = {'user': user}
     return aiohttp_jinja2.render_template('current_stock.html', request, context)
 
 async def orders_page(request):
-    """Страница параметров заказа"""
     user = await get_current_user(request)
     if not user or user['role'] not in ['admin', 'manager']:
         raise web.HTTPFound('/')
-        
     context = {'user': user}
     return aiohttp_jinja2.render_template('orders.html', request, context)
 
 async def history_page(request):
-    """Страница истории"""
     user = await get_current_user(request)
     if not user or user['role'] not in ['admin', 'manager']:
         raise web.HTTPFound('/')
-        
     context = {'user': user}
     return aiohttp_jinja2.render_template('history.html', request, context)
 
 async def supply_page(request):
-    """Страница приемки товаров"""
     user = await get_current_user(request)
     if not user or user['role'] not in ['admin', 'manager']:
         raise web.HTTPFound('/')
-        
     context = {'user': user}
     return aiohttp_jinja2.render_template('supply.html', request, context)
 
 async def reports_page(request):
-    """Страница отчетов"""
     user = await get_current_user(request)
     if not user or user['role'] not in ['admin', 'manager']:
         raise web.HTTPFound('/')
-        
     context = {'user': user}
     return aiohttp_jinja2.render_template('reports.html', request, context)
 
 async def generate_order_api(request):
     """API: Генерация заказа на указанное кол-во дней"""
     try:
+        company_id = await get_current_company(request)
         days = int(request.query.get('days', 10))
         lookback = int(request.query.get('lookback', 30))
         
-        # Валидация
         if days <= 0 or lookback <= 0:
             return safe_json_response({'error': 'Параметры должны быть больше 0'}, status=400)
             
         from utils.calculations import calculate_order
-        
-        # Получаем данные логики
-        result = await calculate_order(db, days, lookback_days=lookback)
+        result = await calculate_order(db, company_id, days, lookback_days=lookback)
         return safe_json_response(result)
     except Exception as e:
         import traceback
@@ -336,9 +319,10 @@ async def generate_order_api(request):
 async def get_history_api(request):
     """API: История остатков"""
     try:
+        company_id = await get_current_company(request)
         product_id = int(request.match_info.get('product_id'))
         days = int(request.query.get('days', 14))
-        history = await db.get_stock_history(product_id, days)
+        history = await db.get_stock_history(company_id, product_id, days)
         return safe_json_response(history)
     except Exception as e:
         return safe_json_response({'error': str(e)}, status=500)
@@ -346,23 +330,20 @@ async def get_history_api(request):
 async def get_daily_report_api(request):
     """API: Отчет за день"""
     try:
+        company_id = await get_current_company(request)
         date_str = request.query.get('date', get_working_date())
         
-        # Для ежедневного отчета нам нужно сравнить с предыдущим днем, где есть остатки
-        prev_date = await db.get_latest_date_before(date_str)
+        prev_date = await db.get_latest_date_before(company_id, date_str)
         
         if not prev_date:
             return safe_json_response({
                 'date': date_str,
                 'consumption': [],
-                'total_supply_cost': await db.get_supply_total(date_str)
+                'total_supply_cost': await db.get_supply_total(company_id, date_str)
             })
 
-        # Расход - это разница между последним известным остатком и текущим
-        consumption = await db.calculate_consumption(str(prev_date), date_str)
-        
-        # Также получаем сумму закупа за этот день
-        total_supply_cost = await db.get_supply_total(date_str)
+        consumption = await db.calculate_consumption(company_id, str(prev_date), date_str)
+        total_supply_cost = await db.get_supply_total(company_id, date_str)
                 
         return safe_json_response({
             'date': date_str,
@@ -378,17 +359,15 @@ async def get_daily_report_api(request):
 async def get_weekly_report_api(request):
     """API: Отчет за неделю"""
     try:
-        # Для простоты берем последние 7 дней от текущей рабочей даты
+        company_id = await get_current_company(request)
         end_date = get_working_date()
         from datetime import timedelta
         end_dt = datetime.strptime(end_date, '%Y-%m-%d')
-        start_dt = end_dt - timedelta(days=7) # Берем на 1 день больше, чтобы был базис для сравнения
+        start_dt = end_dt - timedelta(days=7)
         start_date = start_dt.strftime('%Y-%m-%d')
         
-        consumption = await db.calculate_consumption(start_date, end_date)
-        
-        # Сумма закупа за период
-        total_supply_cost = await db.get_supply_total_period(start_date, end_date)
+        consumption = await db.calculate_consumption(company_id, start_date, end_date)
+        total_supply_cost = await db.get_supply_total_period(company_id, start_date, end_date)
                 
         return safe_json_response({
             'start_date': start_date,
@@ -404,12 +383,9 @@ async def get_weekly_report_api(request):
 async def index(request):
     """Главная страница Mini App / Web App"""
     user = await get_current_user(request)
-    
-    # Если это админ - показываем дашборд, иначе только склад
     html_file = 'dashboard.html' if user['role'] in ['admin', 'manager'] else 'stock_input.html'
     html_path = Path(__file__).parent / 'templates' / html_file
     
-    # Fallback на stock_input.html если файла еще нет 
     if not html_path.exists():
         html_file = 'stock_input.html'
         
@@ -418,7 +394,6 @@ async def index(request):
 
 
 async def order_edit(request):
-    """Страница редактирования заказа"""
     user = await get_current_user(request)
     context = {'user': user}
     return aiohttp_jinja2.render_template('order_edit.html', request, context)
@@ -427,9 +402,9 @@ async def order_edit(request):
 async def get_products(request):
     """API: Получить список всех товаров"""
     try:
-        products = await db.get_all_products()
+        company_id = await get_current_company(request)
+        products = await db.get_all_products(company_id)
 
-        # SQLite возвращает даты как строки — не нужен .isoformat()
         for product in products:
             if 'created_at' in product and product['created_at']:
                 product['created_at'] = str(product['created_at'])
@@ -446,6 +421,7 @@ async def save_supply(request):
         if not user or user['role'] not in ['admin', 'manager']:
              return safe_json_response({'error': 'Unauthorized'}, status=401)
              
+        company_id = await get_current_company(request)
         data = await request.json()
         items = data.get('items', [])
         date_str = data.get('date', get_working_date())
@@ -457,7 +433,7 @@ async def save_supply(request):
             cost = float(item.get('cost', 0))
             
             if boxes > 0 or weight > 0:
-                await db.add_supply(product_id, date_str, int(boxes), weight, cost)
+                await db.add_supply(company_id, product_id, date_str, int(boxes), weight, cost)
                 
         return safe_json_response({'status': 'ok'})
     except Exception as e:
@@ -468,6 +444,7 @@ async def save_supply(request):
 async def save_stock(request):
     """API: Сохранить остатки (с модерацией для сотрудников)"""
     try:
+        company_id = await get_current_company(request)
         data = await request.json()
         stock_items = data.get('stock', [])
         user_id = data.get('user_id')
@@ -478,20 +455,19 @@ async def save_stock(request):
         working_date_str = get_working_date()
         date_obj = datetime.strptime(working_date_str, '%Y-%m-%d').date()
 
-        # Проверяем роль пользователя
         user_role = await db.get_user_role(user_id)
 
         if user_role == 'admin':
-            # Админ - сохраняем напрямую
             for item in stock_items:
                 await db.add_stock(
+                    company_id=company_id,
                     product_id=item['product_id'],
                     date=date_obj,
                     quantity=item['quantity'],
                     weight=item['weight']
                 )
 
-            print(f"✅ Админ {user_id} сохранил {len(stock_items)} позиций")
+            print(f"✅ Админ {user_id} (Co:{company_id}) сохранил {len(stock_items)} позиций")
 
             return safe_json_response({
                 'success': True,
@@ -500,21 +476,19 @@ async def save_stock(request):
                 'requires_moderation': False
             })
         else:
-            # Сотрудник - создаем submission
             try:
                 submission_id = await db.create_stock_submission(
+                    company_id=company_id,
                     user_id=user_id,
                     date=date_obj,
                     items=stock_items
                 )
             except ValueError as e:
-                # Уже есть pending заявка
                 return safe_json_response({'error': str(e)}, status=400)
 
-            print(f"📝 Сотрудник {user_id} создал submission #{submission_id}")
+            print(f"📝 Сотрудник {user_id} создал submission #{submission_id} для Co:{company_id}")
 
-            # Уведомляем админов
-            await notify_admins_about_submission(submission_id, user_id,
+            await notify_admins_about_submission(company_id, submission_id, user_id,
                                                 working_date_str, stock_items)
 
             return safe_json_response({
@@ -533,9 +507,9 @@ async def save_stock(request):
 async def get_latest_stock(request):
     """API: Получить последние остатки"""
     try:
-        stock = await db.get_latest_stock()
+        company_id = await get_current_company(request)
+        stock = await db.get_latest_stock(company_id)
 
-        # SQLite возвращает даты как строки, str() работает для обоих типов
         for item in stock:
             if 'created_at' in item and item['created_at']:
                 item['created_at'] = str(item['created_at'])
@@ -551,12 +525,11 @@ async def get_latest_stock(request):
 async def check_stock_exists(request):
     """API: Проверить наличие остатков за текущий рабочий день"""
     try:
-        # Определяем текущий рабочий день
+        company_id = await get_current_company(request)
         working_date_str = get_working_date()
         date_obj = datetime.strptime(working_date_str, '%Y-%m-%d').date()
 
-        # Проверяем наличие данных
-        exists = await db.has_stock_for_date(date_obj)
+        exists = await db.has_stock_for_date(company_id, date_obj)
 
         return safe_json_response({
             'exists': exists,
@@ -570,19 +543,12 @@ async def check_stock_exists(request):
 async def get_stock_for_date(request):
     """API: Получить остатки за конкретную дату"""
     try:
+        company_id = await get_current_company(request)
         date_str = request.match_info.get('date')
         date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
 
-        print(f"📅 API запрос остатков за дату: {date_str}")
-        stock = await db.get_stock_by_date(date_obj)
-        print(f"📦 Найдено {len(stock)} записей")
+        stock = await db.get_stock_by_date(company_id, date_obj)
 
-        if len(stock) > 0:
-            # Показываем первые 3 записи для отладки
-            for i, item in enumerate(stock[:3]):
-                print(f"  [{i+1}] ID={item.get('product_id')}, qty={item.get('quantity')}, name={item.get('name_internal', 'N/A')}")
-
-        # SQLite возвращает даты как строки, str() работает для обоих типов
         for item in stock:
             if 'created_at' in item and item['created_at']:
                 item['created_at'] = str(item['created_at'])
@@ -600,11 +566,11 @@ async def get_stock_for_date(request):
 async def get_yesterday_stock(request):
     """АПИ: Получить остатки за последний рабочий день до сегодня"""
     try:
+        company_id = await get_current_company(request)
         working_date_str = get_working_date()
         date_obj = datetime.strptime(working_date_str, '%Y-%m-%d').date()
 
-        # Находим последнюю дату с данными до сегодня через абстрактный метод
-        latest_previous_date = await db.get_latest_date_before(str(date_obj))
+        latest_previous_date = await db.get_latest_date_before(company_id, str(date_obj))
 
         if not latest_previous_date:
             return safe_json_response({
@@ -613,7 +579,7 @@ async def get_yesterday_stock(request):
                 'working_date': working_date_str
             })
 
-        stock = await db.get_stock_by_date(latest_previous_date)
+        stock = await db.get_stock_by_date(company_id, latest_previous_date)
 
         for item in stock:
             if 'created_at' in item and item['created_at']:
@@ -635,17 +601,15 @@ async def get_yesterday_stock(request):
 async def get_today_supplies(request):
     """АПИ: Получить поставки между последними остатками и сегодня"""
     try:
+        company_id = await get_current_company(request)
         working_date_str = get_working_date()
         date_obj = datetime.strptime(working_date_str, '%Y-%m-%d').date()
 
-        # Находим последнюю дату с остатками
-        latest_prev = await db.get_latest_date_before(str(date_obj))
+        latest_prev = await db.get_latest_date_before(company_id, str(date_obj))
         start_date = latest_prev if latest_prev else str(date_obj)
 
-        # Получаем поставки за период через абстрактный метод
-        supplies = await db.get_supplies_between(start_date, working_date_str)
+        supplies = await db.get_supplies_between(company_id, start_date, working_date_str)
 
-        # Группируем по product_id
         supplies_dict = {}
         for supply in supplies:
             pid = supply['product_id']
@@ -665,22 +629,21 @@ async def get_today_supplies(request):
         return safe_json_response({'error': str(e)}, status=500)
 
 
-async def notify_admins_about_submission(submission_id, user_id, date_str, items):
-    """Отправить уведомление админам о новой заявке"""
+async def notify_admins_about_submission(company_id, submission_id, user_id, date_str, items):
+    """Отправить уведомление админам компании о новой заявке"""
     bot = get_bot_instance()
     if not bot:
-        print("⚠️ Cannot create bot instance, notifications disabled")
         return
 
     try:
-        admin_ids = await db.get_admin_ids()
+        admin_ids = await db.get_admin_ids(company_id)
         user_info = await db.get_user_info(user_id)
-        # Приоритет: display_name > username > first_name
-        username = user_info.get('display_name') or user_info.get('username') or user_info.get('first_name') or 'Неизвестно'
+        username = user_info.get('username') or user_info.get('first_name') or 'Неизвестно'
 
         message = f"""
 🔔 <b>НОВАЯ ЗАЯВКА НА ОСТАТКИ</b>
 
+🏢 Точка: {user_info.get('company_name', 'Неизвестно')}
 👤 Сотрудник: {username}
 📅 Дата: {date_str}
 📦 Товаров: {len(items)}
@@ -706,13 +669,10 @@ async def notify_admins_about_submission(submission_id, user_id, date_str, items
                     reply_markup=keyboard,
                     parse_mode="HTML"
                 )
-                print(f"✅ Уведомление отправлено админу {admin_id}")
             except Exception as e:
                 print(f"❌ Ошибка отправки уведомления админу {admin_id}: {e}")
     except Exception as e:
         print(f"❌ Ошибка в notify_admins_about_submission: {e}")
-        import traceback
-        traceback.print_exc()
 
 
 async def save_draft_order(request):
@@ -726,40 +686,33 @@ async def save_draft_order(request):
             return safe_json_response({'error': 'Missing draft_key or order_data'}, status=400)
 
         draft_orders[draft_key] = order_data
-        print(f"✅ Черновик заказа сохранен: {draft_key}")
         return safe_json_response({'success': True, 'draft_key': draft_key})
-    except Exception as e:
-        print(f"❌ Ошибка сохранения черновика заказа: {e}")
-        return safe_json_response({'error': str(e)}, status=500)
-
+    except Exception:
+        return safe_json_response({'error': 'Error'}, status=500)
 
 async def get_draft_order(request):
     """API: Получить данные черновика заказа"""
     try:
         draft_key = request.match_info.get('draft_key')
-
         if draft_key not in draft_orders:
             return safe_json_response({'error': 'Draft not found'}, status=404)
-
-        order_data = draft_orders[draft_key]
-        return safe_json_response(order_data)
-    except Exception as e:
-        print(f"❌ Ошибка получения черновика заказа: {e}")
-        return safe_json_response({'error': str(e)}, status=500)
+        return safe_json_response(draft_orders[draft_key])
+    except Exception:
+        return safe_json_response({'error': 'Error'}, status=500)
 
 
 async def get_submission_data(request):
     """API: Получить данные submission для редактирования"""
     try:
+        company_id = await get_current_company(request)
         submission_id = int(request.match_info.get('id'))
 
-        submission = await db.get_submission_by_id(submission_id)
+        submission = await db.get_submission_by_id(company_id, submission_id)
         if not submission:
-            return safe_json_response({'error': 'Submission not found'}, status=404)
+            return safe_json_response({'error': 'Submission not found or unauthorized'}, status=404)
 
         items = await db.get_submission_items(submission_id)
 
-        # Конвертируем в формат для WebApp
         stock_data = []
         for item in items:
             stock_data.append({
@@ -791,16 +744,13 @@ async def update_submission(request):
         submission_id = data.get('submission_id')
         stock_items = data.get('stock', [])
 
-        # Обновляем items
         for item in stock_items:
             await db.update_submission_item(
                 submission_id=submission_id,
                 product_id=item['product_id'],
-                quantity=item['quantity'],
-                weight=item['weight']
+                edited_quantity=item['quantity'],
+                edited_weight=item['weight']
             )
-
-        print(f"✅ Submission #{submission_id} обновлен")
 
         return safe_json_response({
             'success': True,
@@ -816,7 +766,6 @@ def create_app():
     """Создать приложение aiohttp"""
     app = web.Application()
 
-    # Настройка CORS
     cors = aiohttp_cors.setup(app, defaults={
         "*": aiohttp_cors.ResourceOptions(
             allow_credentials=True,
@@ -855,56 +804,44 @@ def create_app():
     app.router.add_get('/api/stock/{date}', get_stock_for_date)
     app.router.add_get('/api/supplies/today', get_today_supplies)
 
-    # Роуты для модерации
     app.router.add_get('/api/submission/{id}', get_submission_data)
     app.router.add_post('/api/submission/update', update_submission)
 
-    # Роуты для редактирования заказов
     app.router.add_post('/api/draft_order', save_draft_order)
     app.router.add_get('/api/draft_order/{draft_key}', get_draft_order)
 
-    # Применяем CORS ко всем роутам
     for route in list(app.router.routes()):
         cors.add(route)
 
-    # Настройка статики
     static_dir = Path(__file__).parent / 'static'
     static_dir.mkdir(exist_ok=True)
     app.router.add_static('/static/', path=str(static_dir), name='static')
 
-    # Настройка Jinja2
     templates_dir = Path(__file__).parent / 'templates'
     aiohttp_jinja2.setup(app, loader=jinja2.FileSystemLoader(str(templates_dir)))
 
-    # Настройка сессий (ключ в .env)
     session_key = os.getenv('SESSION_KEY')
     if not session_key:
         session_key = os.urandom(32)
-        print("⚠️ Сгенерирован временный ключ для сессий. При перезапуске сервера всех разлогинит.")
     elif isinstance(session_key, str):
-        # Если ключ передан как строка, пробуем его подготовить (нужно 32 байта)
         session_key = session_key.encode()
         if len(session_key) > 32:
             session_key = session_key[:32]
         elif len(session_key) < 32:
             session_key = session_key.ljust(32, b'\0')
     
-    # Настройка Cookie Storage
-    # Включаем HttpOnly и Secure для Railway (так как там HTTPS)
     storage = EncryptedCookieStorage(
         session_key, 
         cookie_name='WeDrink_Session',
-        max_age=86400 * 30, # 30 дней
+        max_age=86400 * 30,
         httponly=True,
         secure=True,
         samesite='Lax'
     )
     aiohttp_session.setup(app, storage)
 
-    # Добавляем middleware для проверки авторизации
     app.middlewares.append(auth_middleware)
 
-    # Хуки жизненного цикла
     app.on_startup.append(init_db)
     app.on_cleanup.append(close_db)
 
