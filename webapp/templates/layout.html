@@ -89,6 +89,19 @@
                         <span class="nav-text">Аналитика</span>
                     </a>
                 </li>
+
+                <!-- Divider -->
+                <li class="nav-divider superadmin-only"
+                    style="display: none; height: 1px; background-color: #eee; margin: 10px 15px;"></li>
+
+                <!-- Superadmin Menu -->
+                <li class="nav-item superadmin-only" style="display: none;">
+                    <a href="/superadmin" class="nav-link {% block nav_superadmin %}{% endblock %}"
+                        data-route="/superadmin">
+                        <span class="material-symbols-rounded">admin_panel_settings</span>
+                        <span class="nav-text">Франшизы</span>
+                    </a>
+                </li>
             </ul>
 
             <div class="sidebar-footer">

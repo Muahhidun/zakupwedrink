@@ -690,3 +690,45 @@ class DatabasePG:
                 WHERE o.company_id = $1 AND o.status = 'pending' AND i.product_id = $2
             """, company_id, product_id)
             return float(val) if val else 0.0
+
+    async def get_all_companies(self) -> list:
+        """Получить список всех компаний (для Super-Admin)"""
+        async with self.pool.acquire() as conn:
+            records = await conn.fetch("""
+                SELECT 
+                    c.id, 
+                    c.name, 
+                    c.subscription_status, 
+                    c.subscription_ends_at,
+                    c.created_at,
+                    (SELECT count(*) FROM users u WHERE u.company_id = c.id) as user_count,
+                    (SELECT u.username FROM users u WHERE u.company_id = c.id AND u.role = 'admin' LIMIT 1) as owner_username
+                FROM companies c
+                ORDER BY c.id ASC
+            """)
+            return [dict(r) for r in records]
+            
+    async def create_company(self, name: str, trial_days: int = 14) -> dict:
+        """Создать новую компанию (для Super-Admin)"""
+        async with self.pool.acquire() as conn:
+            # Создаем новую компанию
+            record = await conn.fetchrow("""
+                INSERT INTO companies (name, subscription_status, subscription_ends_at)
+                VALUES ($1, 'trial', CURRENT_TIMESTAMP + interval '1 day' * $2)
+                RETURNING id, name, subscription_status, subscription_ends_at
+            """, name, trial_days)
+            
+            return dict(record) if record else None
+            
+    async def copy_global_products_to_company(self, target_company_id: int):
+        """Скопировать все товары из системной компании (id=1) в новую компанию"""
+        async with self.pool.acquire() as conn:
+            await conn.execute("""
+                INSERT INTO products 
+                (company_id, name_chinese, name_russian, name_internal, package_weight, units_per_box, box_weight, price_per_box, unit)
+                SELECT 
+                    $1, name_chinese, name_russian, name_internal, package_weight, units_per_box, box_weight, price_per_box, unit
+                FROM products 
+                WHERE company_id = 1
+            """, target_company_id)
+            

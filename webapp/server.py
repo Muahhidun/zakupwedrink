@@ -810,6 +810,9 @@ def create_app():
     app.router.add_get('/api/stock/{date}', get_stock_for_date)
     app.router.add_get('/api/supplies/today', get_today_supplies)
 
+    app.router.add_get('/superadmin', superadmin_page)
+    app.router.add_post('/api/superadmin/companies', api_create_company)
+
     app.router.add_get('/api/submission/{id}', get_submission_data)
     app.router.add_post('/api/submission/update', update_submission)
 
@@ -859,3 +862,75 @@ if __name__ == '__main__':
     app = create_app()
     print(f"🚀 Запуск веб-сервера на порту {port}")
     web.run_app(app, host='0.0.0.0', port=port)
+
+# ==========================================
+# SUPERADMIN ROUTES & APIs
+# ==========================================
+
+async def superadmin_page(request):
+    """Страница управления франшизами (Только для Super-Admin)"""
+    user = await get_current_user(request)
+    if not user or user.get('role') != 'admin':
+        raise web.HTTPFound('/login')
+        
+    # Двойная проверка, что пользователь именно Супер-Админ (создатель Платформы)
+    # В этой версии Супер-Админ - это тот, кто первым зарегистрировался (id=1) 
+    # или чья `company_id` = 1, но для надежности можно проверить БД:
+    async with db.pool.acquire() as conn:
+        record = await conn.fetchrow("SELECT role, company_id FROM users WHERE id = $1", user['id'])
+        if not record or record['role'] != 'admin' or record['company_id'] != 1:
+            return web.Response(text="Доступ запрещен. Только для Платформодержателя.", status=403)
+            
+    companies = await db.get_all_companies()
+    
+    total_companies = len(companies)
+    active_companies = sum(1 for c in companies if c['subscription_status'] == 'active')
+    total_users = sum(c['user_count'] for c in companies)
+
+    context = {
+        'page': 'superadmin',
+        'companies': companies,
+        'total_companies': total_companies,
+        'active_companies': active_companies,
+        'total_users': total_users,
+        'user': user
+    }
+    return aiohttp_jinja2.render_template('superadmin.html', request, context)
+
+
+async def api_create_company(request):
+    """API: Создать новую компанию (Франшизу)"""
+    user = await get_current_user(request)
+    if not user or user.get('role') != 'admin' or user.get('company_id') != 1:
+        return safe_json_response({'error': 'Доступ запрещен'}, status=403)
+        
+    try:
+        data = await request.json()
+        name = data.get('name')
+        trial_days = data.get('trial_days', 14)
+        
+        if not name:
+            return safe_json_response({'error': 'Имя компании обязательно'}, status=400)
+            
+        company = await db.create_company(name, trial_days)
+        if not company:
+            return safe_json_response({'error': 'Ошибка создания компании в БД'}, status=500)
+            
+        # Генерируем инвайт-ссылку для Владельца новой компании
+        # В идеале нужно хранить токены в БД, но для простоты зашифруем данные в base64
+        import base64
+        import json
+        invite_data = json.dumps({'c': company['id'], 'r': 'admin', 't': int(datetime.now().timestamp())})
+        invite_token = base64.urlsafe_b64encode(invite_data.encode()).decode().rstrip('=')
+        
+        bot_username = os.getenv('BOT_USERNAME', 'Zakupformbot')
+        invite_url = f"https://t.me/{bot_username}?start=invite_{invite_token}"
+            
+        return safe_json_response({
+            'success': True,
+            'company': company,
+            'invite_url': invite_url
+        })
+    except Exception as e:
+        print(f"Ошибка api_create_company: {e}")
+        return safe_json_response({'error': str(e)}, status=500)
