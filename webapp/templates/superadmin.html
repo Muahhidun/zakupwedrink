@@ -174,13 +174,13 @@
 
 {% endblock %}
 
-{% block scripts %}
+{% block extra_js %}
 <script>
     function showNewCompanyModal() {
         document.getElementById('newCompanyModal').style.display = 'block';
         document.getElementById('companyName').value = '';
         document.getElementById('inviteResultArea').style.display = 'none';
-        
+
         document.getElementById('btnCreateCompany').style.display = 'block';
         document.getElementById('btnCancel').style.display = 'block';
         document.getElementById('btnDone').style.display = 'none';
@@ -188,7 +188,7 @@
     }
 
     function hideNewCompanyModal() {
-        if(document.getElementById('btnDone').style.display === 'block') {
+        if (document.getElementById('btnDone').style.display === 'block') {
             window.location.reload();
         } else {
             document.getElementById('newCompanyModal').style.display = 'none';
@@ -222,7 +222,7 @@
                 document.getElementById('inviteResultArea').style.display = 'block';
                 document.getElementById('inviteLinkInput').value = data.invite_url;
                 document.getElementById('companyName').disabled = true;
-                
+
                 // Toggle buttons
                 btn.style.display = 'none';
                 document.getElementById('btnCancel').style.display = 'none';
@@ -245,7 +245,7 @@
         copyText.select();
         copyText.setSelectionRange(0, 99999);
         navigator.clipboard.writeText(copyText.value);
-        
+
         alert("Ссылка скопирована!");
     }
 
