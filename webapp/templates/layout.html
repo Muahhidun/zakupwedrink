@@ -58,6 +58,13 @@
                         <span class="nav-text">Склад</span>
                     </a>
                 </li>
+                <li class="nav-item admin-only" style="display: none;">
+                    <a href="/submissions" class="nav-link {% block nav_submissions %}{% endblock %}"
+                        data-route="/submissions">
+                        <span class="material-symbols-rounded">fact_check</span>
+                        <span class="nav-text">Заявки</span>
+                    </a>
+                </li>
                 <li class="nav-item">
                     <a href="/stock_input" class="nav-link {% block nav_stock_input %}{% endblock %}"
                         data-route="/stock_input">

@@ -274,6 +274,7 @@
     let todaySupplies = {};
     let workingDate = '';
     let currentUser = null;
+    let editSubmissionId = new URLSearchParams(window.location.search).get('edit_submission_id');
 
     // Initialization
     document.addEventListener('DOMContentLoaded', async () => {
@@ -299,12 +300,19 @@
             }
 
             // Fetch data concurrently
-            await Promise.all([
-                checkExistingData(),
+            const tasks = [
                 loadProducts(),
                 loadYesterdayStock(),
                 loadTodaySupplies()
-            ]);
+            ];
+
+            if (editSubmissionId) {
+                tasks.push(loadSubmissionData());
+            } else {
+                tasks.push(checkExistingData());
+            }
+
+            await Promise.all(tasks);
 
             renderTable();
         } catch (e) {
@@ -450,6 +458,36 @@
         }
     }
 
+    async function loadSubmissionData() {
+        try {
+            const res = await fetch(`/api/submission/${editSubmissionId}`);
+            if (!res.ok) throw new Error('Ошибка получения данных заявки');
+            const data = await res.json();
+
+            workingDate = data.date;
+            const d = new Date(workingDate);
+            document.getElementById('currentDate').textContent = d.toLocaleDateString('ru-RU');
+
+            const map = {};
+            data.stock.forEach(i => map[i.product_id] = i.quantity);
+
+            products.forEach(p => {
+                const input = document.getElementById(`qty-${p.id}`);
+                if (input && map[p.id] !== undefined) {
+                    input.value = map[p.id];
+                    updateConsumption(p.id);
+                }
+            });
+
+            showToast(`Редактирование заявки #${editSubmissionId}`, 'info');
+            document.getElementById('saveBtn').innerHTML = '<span class="material-symbols-rounded">save</span> Сохранить изменения';
+            document.getElementById('saveBtn').onclick = saveStock;
+        } catch (e) {
+            console.error(e);
+            showToast('Не удалось загрузить данные заявки', 'error');
+        }
+    }
+
     async function saveStock() {
         const btn = document.getElementById('saveBtn');
         btn.disabled = true;
@@ -510,11 +548,20 @@
                 return;
             }
 
-            const payloadParams = {
+            let apiEndpoint = '/api/stock';
+            let payloadParams = {
                 date: workingDate,
-                stock: stockData,
+                stock: stockData.filter(item => item.product_id !== undefined),
                 user_id: currentUser.id
             };
+
+            if (editSubmissionId) {
+                apiEndpoint = '/api/submission/update';
+                payloadParams = {
+                    submission_id: parseInt(editSubmissionId),
+                    stock: stockData.filter(item => item.product_id !== undefined)
+                };
+            }
 
             // Check if we are inside Telegram Mini App (to pass initData for auth bypass if session fails)
             const headers = { 'Content-Type': 'application/json' };
@@ -522,7 +569,7 @@
                 headers['x-telegram-init-data'] = window.Telegram.WebApp.initData;
             }
 
-            const response = await fetch('/api/stock', {
+            const response = await fetch(apiEndpoint, {
                 method: 'POST',
                 headers: headers,
                 body: JSON.stringify(payloadParams)
@@ -540,7 +587,9 @@
                 });
 
                 setTimeout(() => {
-                    if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initDataUnsafe.user) {
+                    if (editSubmissionId) {
+                        window.location.href = '/submissions';
+                    } else if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initDataUnsafe.user) {
                         window.Telegram.WebApp.close();
                     } else if (currentUser.role === 'admin' || currentUser.role === 'manager') {
                         window.location.href = '/stock';
