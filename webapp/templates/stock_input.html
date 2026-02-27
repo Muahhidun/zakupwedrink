@@ -308,15 +308,17 @@
                 loadTodaySupplies()
             ];
 
-            if (editSubmissionId) {
-                promises.push(loadSubmissionData(editSubmissionId));
-            } else {
+            if (!editSubmissionId) {
                 promises.push(checkExistingData());
             }
 
             await Promise.all(promises);
 
             renderTable();
+
+            if (editSubmissionId) {
+                await loadSubmissionData(editSubmissionId);
+            }
 
             if (editSubmissionId && submissionDataMap) {
                 products.forEach(p => {
