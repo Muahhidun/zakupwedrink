@@ -818,6 +818,8 @@ def create_app():
 
     app.router.add_get('/superadmin', superadmin_page)
     app.router.add_post('/api/superadmin/companies', api_create_company)
+    app.router.add_post('/api/superadmin/companies/{id}/subscription', api_update_company_subscription)
+    app.router.add_delete('/api/superadmin/companies/{id}', api_delete_company)
 
     app.router.add_get('/staff', staff_page)
     app.router.add_post('/api/company/invite', api_invite_staff)
@@ -943,6 +945,47 @@ async def api_create_company(request):
         })
     except Exception as e:
         print(f"Ошибка api_create_company: {e}")
+        return safe_json_response({'error': str(e)}, status=500)
+
+async def api_update_company_subscription(request):
+    """API: Обновить статус подписки или продлить её (Только Super-Admin)"""
+    user = await get_current_user(request)
+    if not user or user.get('role') != 'admin' or user.get('company_id') != 1:
+        return safe_json_response({'error': 'Доступ запрещен'}, status=403)
+        
+    try:
+        company_id = int(request.match_info['id'])
+        if company_id == 1:
+            return safe_json_response({'error': 'Нельзя изменить системную компанию'}, status=400)
+            
+        data = await request.json()
+        status = data.get('status')
+        days_to_add = data.get('days_to_add')
+        
+        if not status:
+            return safe_json_response({'error': 'Статус обязателен'}, status=400)
+            
+        await db.update_company_subscription(company_id, status, days_to_add)
+        return safe_json_response({'success': True})
+    except Exception as e:
+        print(f"Ошибка api_update_company_subscription: {e}")
+        return safe_json_response({'error': str(e)}, status=500)
+
+async def api_delete_company(request):
+    """API: Удалить компанию (Только Super-Admin)"""
+    user = await get_current_user(request)
+    if not user or user.get('role') != 'admin' or user.get('company_id') != 1:
+        return safe_json_response({'error': 'Доступ запрещен'}, status=403)
+        
+    try:
+        company_id = int(request.match_info['id'])
+        if company_id == 1:
+            return safe_json_response({'error': 'Нельзя удалить системную компанию'}, status=400)
+            
+        await db.delete_company(company_id)
+        return safe_json_response({'success': True})
+    except Exception as e:
+        print(f"Ошибка api_delete_company: {e}")
         return safe_json_response({'error': str(e)}, status=500)
 
 async def staff_page(request):

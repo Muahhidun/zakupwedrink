@@ -86,7 +86,8 @@
                             <div style="display: inline-flex; gap: 8px;">
                                 <button class="btn"
                                     style="padding: 6px 10px; background: var(--bg-surface-hover); color: var(--text-secondary);"
-                                    title="Настройки" onclick="alert('TODO: Настройки (управление подпиской)')">
+                                    title="Настройки"
+                                    onclick="showCompanySettingsModal({{ company.id }}, '{{ company.subscription_status }}')">
                                     <span class="material-symbols-rounded" style="font-size: 18px;">settings</span>
                                 </button>
                                 <button class="btn"
@@ -172,6 +173,61 @@
     </div>
 </div>
 
+<!-- Modal Settings (Subscription & Delete) -->
+<div id="companySettingsModal"
+    style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 1000;">
+    <div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px);"
+        onclick="hideCompanySettingsModal()"></div>
+    <div class="card fade-in-up"
+        style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 90%; max-width: 500px; padding: 0; z-index: 1001; margin: 0;">
+        <div
+            style="padding: 24px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center;">
+            <h3 style="margin: 0; font-size: 18px;">Настройки компании <span id="settingsCompanyId"
+                    style="color: var(--text-tertiary);"></span></h3>
+            <button class="btn" onclick="hideCompanySettingsModal()"
+                style="padding: 4px; background: transparent; color: var(--text-tertiary);">
+                <span class="material-symbols-rounded">close</span>
+            </button>
+        </div>
+        <div style="padding: 24px;">
+            <div class="form-group" style="margin-bottom: 20px;">
+                <label style="display: block; font-size: 13px; color: var(--text-secondary); margin-bottom: 8px;">Статус
+                    подписки</label>
+                <select id="companyStatusSelect" class="form-control" style="width: 100%;">
+                    <option value="active">Активна (Оплачена)</option>
+                    <option value="trial">Trial (Ознакомительный период)</option>
+                    <option value="blocked">Заблокирована</option>
+                </select>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 24px;">
+                <label
+                    style="display: block; font-size: 13px; color: var(--text-secondary); margin-bottom: 8px;">Продлить
+                    подписку на (дни)</label>
+                <input type="number" id="companyDaysToAdd" class="form-control" placeholder="Например: 14 или 30"
+                    style="width: 100%;">
+                <p style="font-size: 12px; color: var(--text-tertiary); margin-top: 4px; margin-bottom: 0;">Оставьте
+                    пустым, если не нужно продлевать. Текущая дата + это число.</p>
+            </div>
+
+            <div style="padding-top: 24px; border-top: 1px solid var(--border-color); margin-top: 24px;">
+                <h4 style="margin-top: 0; font-size: 14px; color: var(--danger); margin-bottom: 12px;">Опасная зона</h4>
+                <button class="btn btn-danger" style="width: 100%; display: flex; justify-content: center; gap: 8px;"
+                    onclick="deleteCompany()">
+                    <span class="material-symbols-rounded" style="font-size: 18px;">delete_forever</span>
+                    Удалить компанию и все ее данные
+                </button>
+            </div>
+        </div>
+        <div
+            style="padding: 16px 24px; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 12px; background: var(--bg-surface-hover);">
+            <button class="btn" style="background: white; border: 1px solid var(--border-color);"
+                onclick="hideCompanySettingsModal()">Отмена</button>
+            <button class="btn btn-primary" onclick="saveCompanySettings()">Сохранить изменения</button>
+        </div>
+    </div>
+</div>
+
 {% endblock %}
 
 {% block extra_js %}
@@ -251,6 +307,83 @@
 
     function generateInvite(companyId, role) {
         alert('Функция генерации инвайта для существующей компании в разработке.');
+    }
+
+    // --- Settings Modal Logic ---
+    let currentSettingsCompanyId = null;
+
+    function showCompanySettingsModal(companyId, currentStatus) {
+        currentSettingsCompanyId = companyId;
+        document.getElementById('settingsCompanyId').textContent = '#' + companyId;
+
+        const statusSelect = document.getElementById('companyStatusSelect');
+        for (let i = 0; i < statusSelect.options.length; i++) {
+            if (statusSelect.options[i].value === currentStatus) {
+                statusSelect.selectedIndex = i;
+                break;
+            }
+        }
+
+        document.getElementById('companyDaysToAdd').value = '';
+        document.getElementById('companySettingsModal').style.display = 'block';
+    }
+
+    function hideCompanySettingsModal() {
+        document.getElementById('companySettingsModal').style.display = 'none';
+        currentSettingsCompanyId = null;
+    }
+
+    async function saveCompanySettings() {
+        if (!currentSettingsCompanyId) return;
+
+        const status = document.getElementById('companyStatusSelect').value;
+        const daysToAddRaw = document.getElementById('companyDaysToAdd').value;
+        const daysToAdd = daysToAddRaw ? parseInt(daysToAddRaw, 10) : null;
+
+        try {
+            const response = await fetch(`/api/superadmin/companies/${currentSettingsCompanyId}/subscription`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: status, days_to_add: daysToAdd })
+            });
+
+            const data = await response.json();
+            if (response.ok && data.success) {
+                window.location.reload();
+            } else {
+                alert('Ошибка: ' + (data.error || 'Неизвестная ошибка'));
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Сетевая ошибка при сохранении');
+        }
+    }
+
+    async function deleteCompany() {
+        if (!currentSettingsCompanyId) return;
+
+        const confirmText = prompt(`ВНИМАНИЕ! Это действие необратимо удалит компанию #${currentSettingsCompanyId} и ВСЕ связанные с ней данные (товары, остатки, юзеров). Введите "УДАЛИТЬ" для подтверждения:`);
+
+        if (confirmText !== "УДАЛИТЬ") {
+            alert("Удаление отменено.");
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/superadmin/companies/${currentSettingsCompanyId}`, {
+                method: 'DELETE'
+            });
+
+            const data = await response.json();
+            if (response.ok && data.success) {
+                window.location.reload();
+            } else {
+                alert('Ошибка: ' + (data.error || 'Неизвестная ошибка'));
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Сетевая ошибка при удалении');
+        }
     }
 </script>
 {% endblock %}

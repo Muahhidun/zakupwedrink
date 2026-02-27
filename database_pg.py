@@ -747,4 +747,55 @@ class DatabasePG:
                 FROM products 
                 WHERE company_id = 1
             """, target_company_id)
+
+    async def update_company_subscription(self, company_id: int, status: str, days_to_add: int = None):
+        """Обновить статус подписки и/или добавить дни"""
+        async with self.pool.acquire() as conn:
+            if days_to_add is not None:
+                await conn.execute("""
+                    UPDATE companies 
+                    SET subscription_status = $1, 
+                        subscription_ends_at = CURRENT_TIMESTAMP + interval '1 day' * $2
+                    WHERE id = $3
+                """, status, days_to_add, company_id)
+            else:
+                await conn.execute("""
+                    UPDATE companies 
+                    SET subscription_status = $1
+                    WHERE id = $2
+                """, status, company_id)
+
+    async def delete_company(self, company_id: int):
+        """Удалить компанию и все связанные данные"""
+        if company_id == 1:
+            raise ValueError("Нельзя удалить системную компанию (id=1)")
+            
+        async with self.pool.acquire() as conn:
+            async with conn.transaction():
+                # Удаляем связанные данные (каскад)
+                await conn.execute("DELETE FROM stock WHERE company_id = $1", company_id)
+                await conn.execute("DELETE FROM supplies WHERE company_id = $1", company_id)
+                await conn.execute("DELETE FROM orders_data WHERE company_id = $1", company_id)
+                await conn.execute("DELETE FROM order_history WHERE company_id = $1", company_id)
+                
+                # Черновики инвентаризаций
+                await conn.execute("""
+                    DELETE FROM pending_stock_submission_items 
+                    WHERE submission_id IN (SELECT id FROM pending_stock_submissions WHERE company_id = $1)
+                """, company_id)
+                await conn.execute("DELETE FROM pending_stock_submissions WHERE company_id = $1", company_id)
+                
+                # Черновики заказов
+                await conn.execute("""
+                    DELETE FROM pending_order_items 
+                    WHERE order_id IN (SELECT id FROM pending_orders WHERE company_id = $1)
+                """, company_id)
+                await conn.execute("DELETE FROM pending_orders WHERE company_id = $1", company_id)
+                
+                # Базовые сущности
+                await conn.execute("DELETE FROM products WHERE company_id = $1", company_id)
+                await conn.execute("DELETE FROM users WHERE company_id = $1", company_id)
+                
+                # Сама компания
+                await conn.execute("DELETE FROM companies WHERE id = $1", company_id)
             

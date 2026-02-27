@@ -1,13 +1,16 @@
 {% extends "layout.html" %}
 
-{% block content %}
-<div class="header-container">
-    <h2 class="page-title">Управление сотрудниками</h2>
-    <button class="btn btn-primary" id="btnInviteStaff">
-        + Пригласить сотрудника
-    </button>
-</div>
+{% block title %}Управление сотрудниками | WeDrink{% endblock %}
+{% block page_title %}Управление сотрудниками{% endblock %}
 
+{% block header_actions %}
+<button class="btn btn-primary" id="btnInviteStaff" style="display: flex; align-items: center; gap: 8px;">
+    <span class="material-symbols-rounded" style="font-size: 20px;">person_add</span>
+    <span class="hide-mobile">Пригласить</span>
+</button>
+{% endblock %}
+
+{% block content %}
 <!-- Modal for Invite Link -->
 <div id="inviteModal" class="modal-overlay" style="display: none;">
     <div class="modal-content">
@@ -40,10 +43,12 @@
     </div>
 </div>
 
-<div class="card">
-    <h3 class="card-title">Список сотрудников</h3>
-    <div class="table-responsive">
-        <table class="data-table">
+<div class="card" style="padding: 0; overflow: hidden;">
+    <div style="padding: 24px; border-bottom: 1px solid var(--border-color);">
+        <h3 style="margin: 0; font-size: 16px; font-weight: 600;">Список сотрудников</h3>
+    </div>
+    <div class="table-container">
+        <table class="table">
             <thead>
                 <tr>
                     <th>Имя пользователя</th>
