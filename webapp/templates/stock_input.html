@@ -268,12 +268,15 @@
 
 {% block extra_js %}
 <script>
+    const editSubmissionId = {{ edit_submission_id | default ('null') | safe }};
+
     // Variables
     let products = [];
     let yesterdayStock = {};
     let todaySupplies = {};
     let workingDate = '';
     let currentUser = null;
+    let submissionDataMap = null;
 
     // Initialization
     document.addEventListener('DOMContentLoaded', async () => {
@@ -299,14 +302,33 @@
             }
 
             // Fetch data concurrently
-            await Promise.all([
-                checkExistingData(),
+            const promises = [
                 loadProducts(),
                 loadYesterdayStock(),
                 loadTodaySupplies()
-            ]);
+            ];
+
+            if (editSubmissionId) {
+                promises.push(loadSubmissionData(editSubmissionId));
+            } else {
+                promises.push(checkExistingData());
+            }
+
+            await Promise.all(promises);
 
             renderTable();
+
+            if (editSubmissionId && submissionDataMap) {
+                products.forEach(p => {
+                    const input = document.getElementById(`qty-${p.id}`);
+                    if (input && submissionDataMap[p.id] !== undefined) {
+                        input.value = submissionDataMap[p.id];
+                        updateConsumption(p.id);
+                    }
+                });
+
+                document.getElementById('saveBtn').innerHTML = '<span class="material-symbols-rounded">save</span> Сохранить изменения';
+            }
         } catch (e) {
             console.error(e);
             showToast('Возникла ошибка при загрузке данных', 'error');
@@ -327,6 +349,28 @@
             }
         } catch (e) {
             console.error(e);
+        }
+    }
+
+    async function loadSubmissionData(id) {
+        try {
+            const res = await fetch(`/api/submission/${id}`);
+            if (!res.ok) {
+                showToast('Заявка не найдена или нет доступа', 'error');
+                return;
+            }
+            const data = await res.json();
+            workingDate = data.date.split('T')[0];
+            const d = new Date(workingDate);
+            document.getElementById('currentDate').textContent = d.toLocaleDateString('ru-RU') + ' (Редактирование)';
+
+            submissionDataMap = {};
+            data.stock.forEach(i => {
+                submissionDataMap[i.product_id] = i.quantity;
+            });
+        } catch (e) {
+            console.error(e);
+            showToast('Ошибка загрузки заявки', 'error');
         }
     }
 
@@ -510,11 +554,16 @@
                 return;
             }
 
-            const payloadParams = {
+            const payloadParams = editSubmissionId ? {
+                submission_id: parseInt(editSubmissionId),
+                stock: stockData
+            } : {
                 date: workingDate,
                 stock: stockData,
                 user_id: currentUser.id
             };
+
+            const endpoint = editSubmissionId ? '/api/submission/update' : '/api/stock';
 
             // Check if we are inside Telegram Mini App (to pass initData for auth bypass if session fails)
             const headers = { 'Content-Type': 'application/json' };
@@ -522,7 +571,7 @@
                 headers['x-telegram-init-data'] = window.Telegram.WebApp.initData;
             }
 
-            const response = await fetch('/api/stock', {
+            const response = await fetch(endpoint, {
                 method: 'POST',
                 headers: headers,
                 body: JSON.stringify(payloadParams)
@@ -540,10 +589,14 @@
                 });
 
                 setTimeout(() => {
-                    if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initDataUnsafe.user) {
+                    if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initDataUnsafe && window.Telegram.WebApp.initDataUnsafe.user) {
                         window.Telegram.WebApp.close();
                     } else if (currentUser.role === 'admin' || currentUser.role === 'manager') {
-                        window.location.href = '/stock';
+                        if (editSubmissionId) {
+                            window.location.href = '/dashboard';
+                        } else {
+                            window.location.href = '/stock';
+                        }
                     } else {
                         // Reset forms
                         location.reload();

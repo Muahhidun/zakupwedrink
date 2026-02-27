@@ -272,7 +272,21 @@ async def stock_input_page(request):
     user = await get_current_user(request)
     if not user:
         raise web.HTTPFound('/login')
-    context = {'user': user}
+    context = {'user': user, 'edit_submission_id': None}
+    return aiohttp_jinja2.render_template('stock_input.html', request, context)
+
+async def submission_edit_page(request):
+    """Страница модерации заявки по ссылке из Телеграм"""
+    user = await get_current_user(request)
+    if not user or user['role'] not in ['admin', 'manager']:
+        raise web.HTTPFound('/')
+        
+    submission_id = request.query.get('id')
+    if not submission_id:
+        raise web.HTTPFound('/stock_input')
+        
+    context = {'user': user, 'edit_submission_id': submission_id}
+    # Используем ту же страницу `stock_input.html`, но с флагом редактирования
     return aiohttp_jinja2.render_template('stock_input.html', request, context)
 
 async def current_stock_page(request):
@@ -793,6 +807,7 @@ def create_app():
     app.router.add_get('/dashboard', dashboard_page)
     app.router.add_get('/stock', current_stock_page)
     app.router.add_get('/stock_input', stock_input_page)
+    app.router.add_get('/submission_edit', submission_edit_page)
     app.router.add_get('/orders', orders_page)
     app.router.add_get('/history', history_page)
     app.router.add_get('/reports', reports_page)
