@@ -306,15 +306,17 @@
                 loadTodaySupplies()
             ];
 
-            if (editSubmissionId) {
-                tasks.push(loadSubmissionData());
-            } else {
+            if (!editSubmissionId) {
                 tasks.push(checkExistingData());
             }
 
             await Promise.all(tasks);
 
             renderTable();
+
+            if (editSubmissionId) {
+                await loadSubmissionData();
+            }
         } catch (e) {
             console.error(e);
             showToast('Возникла ошибка при загрузке данных', 'error');
