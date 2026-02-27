@@ -788,6 +788,109 @@ async def update_submission(request):
         return safe_json_response({'error': str(e)}, status=500)
 
 
+async def submissions_page(request):
+    """Страница со списком всех заявок на модерации"""
+    user = await get_current_user(request)
+    if not user or user['role'] not in ['admin', 'manager']:
+        raise web.HTTPFound('/')
+        
+    context = {'user': user}
+    return aiohttp_jinja2.render_template('submissions.html', request, context)
+
+
+async def api_get_submissions(request):
+    """API: Получить список всех заявок франшизы"""
+    try:
+        company_id = await get_current_company(request)
+        submissions = await db.get_pending_submissions(company_id)
+        
+        # Serialize datetime objects
+        for sub in submissions:
+            if 'submission_date' in sub and sub['submission_date']:
+                sub['submission_date'] = str(sub['submission_date'])
+            if 'created_at' in sub and sub['created_at']:
+                sub['created_at'] = str(sub['created_at'])
+                
+        return safe_json_response({'submissions': submissions})
+    except Exception as e:
+        print(f"Ошибка получения списка заявок: {e}")
+        return safe_json_response({'error': str(e)}, status=500)
+
+
+async def api_approve_submission(request):
+    """API: Утвердить заявку через Web UI"""
+    try:
+        company_id = await get_current_company(request)
+        user = await get_current_user(request)
+        
+        data = await request.json()
+        submission_id = data.get('submission_id')
+        
+        if not submission_id:
+             return safe_json_response({'error': 'submission_id required'}, status=400)
+             
+        # Проверим, существует ли заявка для этой компании
+        sub = await db.get_submission_by_id(company_id, submission_id)
+        if not sub:
+             return safe_json_response({'error': 'Submission not found'}, status=404)
+             
+        await db.approve_submission(submission_id, user['id'])
+        
+        # Опционально: отправить уведомление в Telegram сотруднику (как было в moderation.py)
+        bot = get_bot_instance()
+        if bot:
+             try:
+                 await bot.send_message(
+                     chat_id=sub['submitted_by'],
+                     text=f"✅ <b>ЗАЯВКА УТВЕРЖДЕНА</b>\n\nВаша заявка #{submission_id} от {sub['submission_date']} была утверждена.\n\nДанные успешно сохранены в базе.",
+                     parse_mode="HTML"
+                 )
+             except Exception as notify_err:
+                 print(f"Failed to notify user about approval: {notify_err}")
+
+        return safe_json_response({'success': True, 'message': 'Заявка успешно утверждена'})
+    except Exception as e:
+        print(f"Ошибка утверждения заявки через Web UI: {e}")
+        return safe_json_response({'error': str(e)}, status=500)
+
+
+async def api_reject_submission(request):
+    """API: Отклонить заявку через Web UI"""
+    try:
+        company_id = await get_current_company(request)
+        user = await get_current_user(request)
+        
+        data = await request.json()
+        submission_id = data.get('submission_id')
+        reason = data.get('reason', 'Отвергнуто администратором без объяснения причин')
+        
+        if not submission_id:
+             return safe_json_response({'error': 'submission_id required'}, status=400)
+             
+        sub = await db.get_submission_by_id(company_id, submission_id)
+        if not sub:
+             return safe_json_response({'error': 'Submission not found'}, status=404)
+             
+        await db.reject_submission(submission_id, user['id'], reason)
+        
+        # Отправить уведомление в Telegram сотруднику
+        bot = get_bot_instance()
+        if bot:
+             try:
+                 await bot.send_message(
+                     chat_id=sub['submitted_by'],
+                     text=f"❌ <b>ЗАЯВКА ОТКЛОНЕНА</b>\n\nВаша заявка #{submission_id} была отклонена.\n\n<b>Причина:</b> {reason}\n\nПроверьте данные и отправьте заново.",
+                     parse_mode="HTML"
+                 )
+             except Exception as notify_err:
+                 print(f"Failed to notify user about rejection: {notify_err}")
+                 
+        return safe_json_response({'success': True, 'message': 'Заявка отклонена'})
+    except Exception as e:
+        print(f"Ошибка отклонения заявки через Web UI: {e}")
+        return safe_json_response({'error': str(e)}, status=500)
+
+
 def create_app():
     """Создать приложение aiohttp"""
     app = web.Application()
@@ -808,6 +911,7 @@ def create_app():
     app.router.add_get('/stock', current_stock_page)
     app.router.add_get('/stock_input', stock_input_page)
     app.router.add_get('/submission_edit', submission_edit_page)
+    app.router.add_get('/submissions', submissions_page)
     app.router.add_get('/orders', orders_page)
     app.router.add_get('/history', history_page)
     app.router.add_get('/reports', reports_page)
@@ -842,6 +946,9 @@ def create_app():
 
     app.router.add_get('/api/submission/{id}', get_submission_data)
     app.router.add_post('/api/submission/update', update_submission)
+    app.router.add_get('/api/submissions', api_get_submissions)
+    app.router.add_post('/api/submission/approve', api_approve_submission)
+    app.router.add_post('/api/submission/reject', api_reject_submission)
 
     app.router.add_post('/api/draft_order', save_draft_order)
     app.router.add_get('/api/draft_order/{draft_key}', get_draft_order)

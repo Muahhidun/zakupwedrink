@@ -1,0 +1,385 @@
+{% extends "layout.html" %}
+
+{% block title %}Заявки на остатки | WeDrink{% endblock %}
+
+{% block nav_submissions %}active{% endblock %}
+
+{% block extra_css %}
+<style>
+    .submissions-container {
+        padding: var(--spacing-lg);
+        max-width: 1200px;
+        margin: 0 auto;
+    }
+
+    .page-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: var(--spacing-xl);
+    }
+
+    .page-title {
+        font-size: 24px;
+        font-weight: 700;
+        color: var(--text-primary);
+    }
+
+    .status-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 4px 10px;
+        border-radius: var(--border-radius-full);
+        font-size: 13px;
+        font-weight: 600;
+    }
+
+    .status-pending {
+        background-color: var(--warning-light);
+        color: var(--warning);
+    }
+
+    .status-approved {
+        background-color: var(--success-light);
+        color: var(--success);
+    }
+
+    .status-rejected {
+        background-color: var(--danger-light);
+        color: var(--danger);
+    }
+
+    .actions-cell {
+        display: flex;
+        gap: 8px;
+    }
+
+    .btn-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 32px;
+        height: 32px;
+        border-radius: var(--border-radius-md);
+        border: none;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .btn-edit {
+        background-color: var(--primary-light);
+        color: var(--primary);
+    }
+
+    .btn-edit:hover {
+        background-color: var(--primary);
+        color: white;
+    }
+
+    .btn-approve {
+        background-color: var(--success-light);
+        color: var(--success);
+    }
+
+    .btn-approve:hover {
+        background-color: var(--success);
+        color: white;
+    }
+
+    .btn-reject {
+        background-color: var(--danger-light);
+        color: var(--danger);
+    }
+
+    .btn-reject:hover {
+        background-color: var(--danger);
+        color: white;
+    }
+
+    /* Modal Styles */
+    .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.2s;
+    }
+
+    .modal-overlay.active {
+        opacity: 1;
+        pointer-events: auto;
+    }
+
+    .modal {
+        background: var(--bg-card);
+        border-radius: var(--border-radius-lg);
+        padding: 24px;
+        width: 90%;
+        max-width: 400px;
+        box-shadow: var(--shadow-xl);
+        transform: translateY(20px);
+        transition: transform 0.2s;
+    }
+
+    .modal-overlay.active .modal {
+        transform: translateY(0);
+    }
+
+    .modal-title {
+        font-size: 18px;
+        font-weight: 600;
+        margin-bottom: 16px;
+    }
+
+    .modal-textarea {
+        width: 100%;
+        min-height: 100px;
+        padding: 12px;
+        border: 1px solid var(--border-color);
+        border-radius: var(--border-radius-md);
+        margin-bottom: 16px;
+        resize: vertical;
+        font-family: inherit;
+    }
+
+    .modal-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 12px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="submissions-container">
+    <div class="page-header">
+        <h1 class="page-title">Заявки на остатки</h1>
+        <button class="btn btn-primary" onclick="loadSubmissions()">
+            <span class="material-symbols-rounded">refresh</span>
+            Обновить
+        </button>
+    </div>
+
+    <div class="card">
+        <div class="table-container">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Дата остатков</th>
+                        <th>Создал</th>
+                        <th>Статус</th>
+                        <th>Отправлено</th>
+                        <th style="text-align: right;">Действия</th>
+                    </tr>
+                </thead>
+                <tbody id="submissionsTableBody">
+                    <tr>
+                        <td colspan="6" style="text-align: center; padding: 32px;">Загрузка данных...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Reject Modal -->
+<div class="modal-overlay" id="rejectModal">
+    <div class="modal">
+        <h3 class="modal-title">Отклонить заявку</h3>
+        <p style="color: var(--text-secondary); margin-bottom: 12px; font-size: 14px;">Укажите причину отклонения.
+            Сотрудник получит уведомление в Telegram.</p>
+        <textarea id="rejectReason" class="modal-textarea" placeholder="Причина отклонения..."></textarea>
+        <div class="modal-actions">
+            <button class="btn btn-secondary" onclick="closeRejectModal()">Отмена</button>
+            <button class="btn btn-danger" id="confirmRejectBtn">Отклонить</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let submissions = [];
+    let currentRejectId = null;
+
+    document.addEventListener('DOMContentLoaded', loadSubmissions);
+
+    async function loadSubmissions() {
+        const tbody = document.getElementById('submissionsTableBody');
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 32px;"><span class="material-symbols-rounded" style="animation: spin 1s linear infinite;">sync</span> Загрузка...</td></tr>';
+
+        try {
+            const res = await fetch('/api/submissions');
+            if (!res.ok) throw new Error('Ошибка сети');
+
+            const data = await res.json();
+            submissions = data.submissions || [];
+            renderTable();
+        } catch (e) {
+            console.error(e);
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 32px; color: var(--danger);">Ошибка загрузки заявок</td></tr>';
+            showToast('Не удалось загрузить список заявок', 'error');
+        }
+    }
+
+    function renderTable() {
+        const tbody = document.getElementById('submissionsTableBody');
+        tbody.innerHTML = '';
+
+        if (submissions.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 32px; color: var(--text-secondary);">Нет отправленных заявок</td></tr>';
+            return;
+        }
+
+        submissions.forEach(sub => {
+            const tr = document.createElement('tr');
+
+            // Форматируем статус
+            let statusBadge = '';
+            if (sub.status === 'pending') {
+                statusBadge = '<span class="status-badge status-pending"><span class="material-symbols-rounded" style="font-size: 16px; margin-right: 4px;">schedule</span>Ожидает</span>';
+            } else if (sub.status === 'approved') {
+                statusBadge = '<span class="status-badge status-approved"><span class="material-symbols-rounded" style="font-size: 16px; margin-right: 4px;">check_circle</span>Утверждена</span>';
+            } else if (sub.status === 'rejected') {
+                statusBadge = '<span class="status-badge status-rejected"><span class="material-symbols-rounded" style="font-size: 16px; margin-right: 4px;">cancel</span>Отклонена</span>';
+            }
+
+            // Форматируем даты
+            const subDate = new Date(sub.submission_date).toLocaleDateString('ru-RU');
+
+            let createdAt = '';
+            if (sub.created_at) {
+                const cDate = new Date(sub.created_at);
+                createdAt = cDate.toLocaleDateString('ru-RU') + ' ' + cDate.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+            }
+
+            // Действия
+            let actionsObj = '';
+            if (sub.status === 'pending') {
+                actionsObj = `
+                    <div class="actions-cell" style="justify-content: flex-end;">
+                        <button class="btn-icon btn-approve" onclick="approveSubmission(${sub.id})" title="Утвердить">
+                            <span class="material-symbols-rounded">check</span>
+                        </button>
+                        <a href="/submission_edit?id=${sub.id}" class="btn-icon btn-edit" title="Проверить/Редактировать">
+                            <span class="material-symbols-rounded">edit</span>
+                        </a>
+                        <button class="btn-icon btn-reject" onclick="openRejectModal(${sub.id})" title="Отклонить">
+                            <span class="material-symbols-rounded">close</span>
+                        </button>
+                    </div>
+                `;
+            } else {
+                actionsObj = `
+                    <div class="actions-cell" style="justify-content: flex-end;">
+                        <a href="/submission_edit?id=${sub.id}" class="btn-icon btn-edit" title="Просмотр" style="opacity: 0.5;">
+                            <span class="material-symbols-rounded">visibility</span>
+                        </a>
+                    </div>
+                `;
+            }
+
+            const authorName = `${sub.first_name || ''} ${sub.last_name || ''}`.trim() || 'Неизвестно';
+
+            tr.innerHTML = `
+                <td style="font-weight: 600; color: var(--text-secondary);">#${sub.id}</td>
+                <td style="font-weight: 500;">${subDate}</td>
+                <td>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <div style="width: 24px; height: 24px; border-radius: 50%; background: var(--border-color); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; color: var(--text-secondary);">
+                            ${authorName.charAt(0).toUpperCase()}
+                        </div>
+                        ${authorName}
+                    </div>
+                </td>
+                <td>${statusBadge}</td>
+                <td style="color: var(--text-secondary); font-size: 13px;">${createdAt}</td>
+                <td>${actionsObj}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    async function approveSubmission(id) {
+        if (!confirm('Вы уверены, что хотите утвердить эти остатки?')) return;
+
+        try {
+            const res = await fetch('/api/submission/approve', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ submission_id: id })
+            });
+            const result = await res.json();
+
+            if (result.success) {
+                showToast(result.message, 'success');
+                loadSubmissions();
+            } else {
+                showToast(result.error || 'Ошибка утверждения', 'error');
+            }
+        } catch (e) {
+            showToast('Сетевая ошибка', 'error');
+        }
+    }
+
+    function openRejectModal(id) {
+        currentRejectId = id;
+        document.getElementById('rejectReason').value = '';
+        document.getElementById('rejectModal').classList.add('active');
+    }
+
+    function closeRejectModal() {
+        currentRejectId = null;
+        document.getElementById('rejectModal').classList.remove('active');
+    }
+
+    document.getElementById('confirmRejectBtn').addEventListener('click', async () => {
+        if (!currentRejectId) return;
+
+        const reason = document.getElementById('rejectReason').value.trim();
+        if (!reason) {
+            showToast('Укажите причину отклонения', 'warning');
+            return;
+        }
+
+        const btn = document.getElementById('confirmRejectBtn');
+        const origText = btn.textContent;
+        btn.textContent = 'Отправка...';
+        btn.disabled = true;
+
+        try {
+            const res = await fetch('/api/submission/reject', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    submission_id: currentRejectId,
+                    reason: reason
+                })
+            });
+            const result = await res.json();
+
+            if (result.success) {
+                showToast(result.message, 'success');
+                closeRejectModal();
+                loadSubmissions();
+            } else {
+                showToast(result.error || 'Ошибка отклонения', 'error');
+            }
+        } catch (e) {
+            showToast('Сетевая ошибка', 'error');
+        } finally {
+            btn.textContent = origText;
+            btn.disabled = false;
+        }
+    });
+</script>
+{% endblock %}
