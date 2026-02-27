@@ -1,0 +1,327 @@
+{% extends "layout.html" %}
+
+{% block title %}Настройки компании | WeDrink{% endblock %}
+
+{% block nav_settings %}active{% endblock %}
+
+{% block extra_css %}
+<style>
+    .settings-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 24px;
+        margin-bottom: 24px;
+    }
+
+    @media (max-width: 768px) {
+        .settings-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    .settings-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: var(--border-radius-lg);
+        padding: 24px;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .settings-card-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 20px;
+        padding-bottom: 16px;
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .settings-card-title {
+        font-size: 18px;
+        font-weight: 600;
+        margin: 0;
+    }
+
+    .settings-icon {
+        background: var(--primary-light);
+        color: var(--primary);
+        width: 40px;
+        height: 40px;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .form-group {
+        margin-bottom: 16px;
+    }
+
+    .form-label {
+        display: block;
+        margin-bottom: 8px;
+        font-size: 14px;
+        font-weight: 500;
+        color: var(--text-secondary);
+    }
+
+    .form-control {
+        width: 100%;
+        padding: 10px 14px;
+        border: 1px solid var(--border-color);
+        border-radius: var(--border-radius-md);
+        font-family: inherit;
+        font-size: 15px;
+        transition: all 0.2s;
+    }
+
+    .form-control:focus {
+        outline: none;
+        border-color: var(--primary);
+        box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+    }
+
+    .form-control:disabled {
+        background: var(--bg-hover);
+        color: var(--text-tertiary);
+        cursor: not-allowed;
+    }
+
+    .stat-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 12px 0;
+        border-bottom: 1px dashed var(--border-color);
+    }
+
+    .stat-row:last-child {
+        border-bottom: none;
+    }
+
+    .stat-label {
+        color: var(--text-secondary);
+        font-size: 14px;
+    }
+
+    .stat-val {
+        font-weight: 600;
+    }
+
+    .badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 4px 10px;
+        border-radius: var(--border-radius-full);
+        font-size: 13px;
+        font-weight: 600;
+    }
+
+    .badge-active {
+        background-color: var(--success-light);
+        color: var(--success);
+    }
+
+    .badge-trial {
+        background-color: var(--primary-light);
+        color: var(--primary);
+    }
+
+    .badge-expired {
+        background-color: var(--danger-light);
+        color: var(--danger);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="header-actions" style="margin-bottom: 24px;">
+    <div>
+        <h2 class="section-title" style="margin: 0;">Настройки</h2>
+        <p style="color: var(--text-secondary); margin-top: 4px;">Управление профилем вашей компании</p>
+    </div>
+</div>
+
+<div class="settings-grid">
+    <!-- Company Profile Card -->
+    <div class="settings-card">
+        <div class="settings-card-header">
+            <div class="settings-icon">
+                <span class="material-symbols-rounded">storefront</span>
+            </div>
+            <h3 class="settings-card-title">Профиль компании</h3>
+        </div>
+
+        <div class="form-group">
+            <label class="form-label" for="companyName">Название компании / точки</label>
+            <input type="text" id="companyName" class="form-control" placeholder="Например: WeDrink Абая">
+        </div>
+
+        <div class="form-group">
+            <label class="form-label" for="companyId">ID компании (только для чтения)</label>
+            <input type="text" id="companyId" class="form-control" disabled value="{{ company_id }}">
+        </div>
+
+        <div style="margin-top: auto; padding-top: 16px;">
+            <button class="btn btn-primary" id="saveProfileBtn" onclick="saveProfile()" style="width: 100%;">
+                <span class="material-symbols-rounded">save</span>
+                Сохранить профиль
+            </button>
+        </div>
+    </div>
+
+    <!-- Subscription Card -->
+    <div class="settings-card">
+        <div class="settings-card-header">
+            <div class="settings-icon" style="background: var(--warning-light); color: var(--warning);">
+                <span class="material-symbols-rounded">workspace_premium</span>
+            </div>
+            <h3 class="settings-card-title">Подписка WeDrink</h3>
+        </div>
+
+        <div id="subscriptionDetails" style="display: none;">
+            <div class="stat-row">
+                <span class="stat-label">Текущий статус:</span>
+                <span id="subStatusBadge" class="badge"></span>
+            </div>
+            <div class="stat-row">
+                <span class="stat-label">Дата регистрации:</span>
+                <span id="subCreated" class="stat-val"></span>
+            </div>
+            <div class="stat-row">
+                <span class="stat-label">Действует до:</span>
+                <span id="subExpires" class="stat-val"></span>
+            </div>
+            <div class="stat-row">
+                <span class="stat-label">Осталось дней:</span>
+                <span id="subDaysLeft" class="stat-val"></span>
+            </div>
+        </div>
+
+        <div id="subscriptionLoading" style="text-align: center; padding: 32px; color: var(--text-secondary);">
+            <span class="material-symbols-rounded" style="animation: spin 1s linear infinite;">sync</span>
+            <div style="margin-top: 8px;">Загрузка данных...</div>
+        </div>
+
+        <div style="margin-top: auto; padding-top: 24px;">
+            <a href="https://t.me/wedrink_support" target="_blank" class="btn btn-secondary" style="width: 100%;">
+                <span class="material-symbols-rounded">support_agent</span>
+                Связаться с поддержкой
+            </a>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', loadCompanyDetails);
+
+    async function loadCompanyDetails() {
+        try {
+            const res = await fetch('/api/company/details');
+            if (!res.ok) throw new Error('Ошибка API');
+            const data = await res.json();
+
+            if (data.success && data.company) {
+                const comp = data.company;
+
+                // Set form values
+                document.getElementById('companyName').value = comp.name || '';
+
+                // Show subscription block
+                document.getElementById('subscriptionLoading').style.display = 'none';
+                document.getElementById('subscriptionDetails').style.display = 'block';
+
+                // Format Status
+                const statusBadge = document.getElementById('subStatusBadge');
+                if (comp.subscription_status === 'active') {
+                    statusBadge.className = 'badge badge-active';
+                    statusBadge.textContent = 'Активна';
+                } else if (comp.subscription_status === 'trial') {
+                    statusBadge.className = 'badge badge-trial';
+                    statusBadge.textContent = 'Пробный период';
+                } else {
+                    statusBadge.className = 'badge badge-expired';
+                    statusBadge.textContent = 'Истекла / Заблокирована';
+                }
+
+                // Format Dates
+                const fDate = (dString) => {
+                    if (!dString) return '—';
+                    const d = new Date(dString);
+                    return d.toLocaleDateString('ru-RU') + ' ' + d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+                };
+
+                document.getElementById('subCreated').textContent = fDate(comp.created_at);
+
+                let daysLeft = '∞';
+                if (comp.subscription_ends_at) {
+                    document.getElementById('subExpires').textContent = fDate(comp.subscription_ends_at);
+
+                    const endDate = new Date(comp.subscription_ends_at);
+                    const now = new Date();
+                    const diffTime = endDate - now;
+                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+                    if (diffDays > 0) {
+                        daysLeft = `${diffDays} дн.`;
+                        if (diffDays <= 3) {
+                            document.getElementById('subDaysLeft').style.color = 'var(--warning)';
+                        }
+                    } else {
+                        daysLeft = 'Окончена';
+                        document.getElementById('subDaysLeft').style.color = 'var(--danger)';
+                    }
+                } else {
+                    document.getElementById('subExpires').textContent = 'Без ограничений';
+                }
+                document.getElementById('subDaysLeft').textContent = daysLeft;
+
+            }
+        } catch (e) {
+            console.error(e);
+            showToast('Не удалось загрузить данные компании', 'error');
+        }
+    }
+
+    async function saveProfile() {
+        const nameInput = document.getElementById('companyName');
+        const name = nameInput.value.trim();
+
+        if (!name) {
+            showToast('Название компании не может быть пустым', 'warning');
+            nameInput.focus();
+            return;
+        }
+
+        const btn = document.getElementById('saveProfileBtn');
+        const origText = btn.innerHTML;
+        btn.innerHTML = '<span class="material-symbols-rounded" style="animation: spin 1s linear infinite;">sync</span> Сохранение...';
+        btn.disabled = true;
+
+        try {
+            const res = await fetch('/api/company/settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name })
+            });
+            const data = await res.json();
+
+            if (data.success) {
+                showToast(data.message, 'success');
+            } else {
+                showToast(data.error || 'Ошибка сохранения', 'error');
+            }
+        } catch (e) {
+            console.error(e);
+            showToast('Сетевая ошибка', 'error');
+        } finally {
+            btn.innerHTML = origText;
+            btn.disabled = false;
+        }
+    }
+</script>
+{% endblock %}

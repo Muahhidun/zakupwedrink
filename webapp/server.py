@@ -944,6 +944,10 @@ def create_app():
     app.router.add_post('/api/company/invite', api_invite_staff)
     app.router.add_post('/api/company/update_role', api_update_staff_role)
 
+    app.router.add_get('/settings', settings_page)
+    app.router.add_get('/api/company/details', api_get_company_details)
+    app.router.add_post('/api/company/settings', api_update_company_settings)
+
     app.router.add_get('/api/submission/{id}', get_submission_data)
     app.router.add_post('/api/submission/update', update_submission)
     app.router.add_get('/api/submissions', api_get_submissions)
@@ -1194,4 +1198,72 @@ async def api_update_staff_role(request):
         return safe_json_response({'success': True})
     except Exception as e:
         print(f"Ошибка api_update_staff_role: {e}")
+        return safe_json_response({'error': str(e)}, status=500)
+
+# ==========================================
+# COMPANY SETTINGS (SaaS)
+# ==========================================
+
+async def settings_page(request):
+    """Страница настроек компании (только Admin)"""
+    user = await get_current_user(request)
+    if not user or user.get('role') not in ['admin', 'superadmin']:
+        raise web.HTTPFound('/login')
+        
+    company_id = await get_current_company(request)
+    
+    context = {
+        'page': 'settings',
+        'user': user,
+        'company_id': company_id
+    }
+    return aiohttp_jinja2.render_template('settings.html', request, context)
+
+async def api_get_company_details(request):
+    """API: Получить данные компании для страницы настроек"""
+    user = await get_current_user(request)
+    if not user or user.get('role') not in ['admin', 'superadmin']:
+        return safe_json_response({'error': 'Доступ запрещен'}, status=403)
+        
+    company_id = await get_current_company(request)
+    
+    try:
+        details = await db.get_company_details(company_id)
+        if details:
+            # Преобразуем datetime в строку, если нужно
+            if 'subscription_ends_at' in details and details['subscription_ends_at']:
+                details['subscription_ends_at'] = details['subscription_ends_at'].strftime('%Y-%m-%d %H:%M:%S')
+            if 'created_at' in details and details['created_at']:
+                details['created_at'] = details['created_at'].strftime('%Y-%m-%d %H:%M:%S')
+                
+            return safe_json_response({'success': True, 'company': details})
+        return safe_json_response({'error': 'Компания не найдена'}, status=404)
+    except Exception as e:
+        print(f"Ошибка api_get_company_details: {e}")
+        return safe_json_response({'error': str(e)}, status=500)
+
+async def api_update_company_settings(request):
+    """API: Обновить основные настройки компании"""
+    user = await get_current_user(request)
+    if not user or user.get('role') != 'admin':
+        return safe_json_response({'error': 'Только владелец (Админ) может менять настройки'}, status=403)
+        
+    company_id = await get_current_company(request)
+    
+    try:
+        data = await request.json()
+        new_name = data.get('name')
+        
+        if not new_name or not new_name.strip():
+            return safe_json_response({'error': 'Название не может быть пустым'}, status=400)
+            
+        success = await db.update_company_details(company_id, new_name.strip())
+        
+        if success:
+            return safe_json_response({'success': True, 'message': 'Настройки успешно сохранены'})
+        else:
+            return safe_json_response({'error': 'Ошибка при сохранении'}, status=500)
+            
+    except Exception as e:
+        print(f"Ошибка api_update_company_settings: {e}")
         return safe_json_response({'error': str(e)}, status=500)
