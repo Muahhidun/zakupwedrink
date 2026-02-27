@@ -91,8 +91,15 @@
                 </li>
 
                 <!-- Divider -->
-                <li class="nav-divider superadmin-only"
+                <li class="nav-divider admin-only"
                     style="display: none; height: 1px; background-color: #eee; margin: 10px 15px;"></li>
+
+                <li class="nav-item admin-only" style="display: none;">
+                    <a href="/staff" class="nav-link {% block nav_staff %}{% endblock %}" data-route="/staff">
+                        <span class="material-symbols-rounded">group</span>
+                        <span class="nav-text">Сотрудники</span>
+                    </a>
+                </li>
 
                 <!-- Superadmin Menu -->
                 <li class="nav-item superadmin-only" style="display: none;">

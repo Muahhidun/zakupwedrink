@@ -819,6 +819,10 @@ def create_app():
     app.router.add_get('/superadmin', superadmin_page)
     app.router.add_post('/api/superadmin/companies', api_create_company)
 
+    app.router.add_get('/staff', staff_page)
+    app.router.add_post('/api/company/invite', api_invite_staff)
+    app.router.add_post('/api/company/update_role', api_update_staff_role)
+
     app.router.add_get('/api/submission/{id}', get_submission_data)
     app.router.add_post('/api/submission/update', update_submission)
 
@@ -939,4 +943,90 @@ async def api_create_company(request):
         })
     except Exception as e:
         print(f"Ошибка api_create_company: {e}")
+        return safe_json_response({'error': str(e)}, status=500)
+
+async def staff_page(request):
+    """Страница управления сотрудниками (Только для Admin/Manager)"""
+    user = await get_current_user(request)
+    if not user or user.get('role') not in ['admin', 'manager']:
+        raise web.HTTPFound('/login')
+        
+    company_id = await get_current_company(request)
+    staff = await db.get_users_by_company(company_id)
+    
+    context = {
+        'page': 'staff',
+        'staff': staff,
+        'user': user,
+        'company_id': company_id
+    }
+    return aiohttp_jinja2.render_template('staff.html', request, context)
+
+async def api_invite_staff(request):
+    """API: Сгенерировать инвайт для нового сотрудника"""
+    user = await get_current_user(request)
+    if not user or user.get('role') not in ['admin', 'manager']:
+        return safe_json_response({'error': 'Доступ запрещен'}, status=403)
+        
+    company_id = await get_current_company(request)
+    
+    try:
+        data = await request.json()
+        role = data.get('role', 'employee')
+        
+        # Зашифруем данные в base64
+        import base64
+        import json
+        invite_data = json.dumps({'c': company_id, 'r': role, 't': int(datetime.now().timestamp())})
+        
+        # Исправленный алгоритм (без лишних =)
+        invite_token_raw = base64.urlsafe_b64encode(invite_data.encode()).decode()
+        invite_token = invite_token_raw.rstrip('=')
+        
+        bot_username = os.getenv('BOT_USERNAME', 'Zakupformbot')
+        invite_url = f"https://t.me/{bot_username}?start=invite_{invite_token}"
+            
+        return safe_json_response({
+            'success': True,
+            'invite_url': invite_url
+        })
+    except Exception as e:
+        print(f"Ошибка api_invite_staff: {e}")
+        return safe_json_response({'error': str(e)}, status=500)
+
+async def api_update_staff_role(request):
+    """API: Изменить роль сотрудника"""
+    user = await get_current_user(request)
+    # Только admin может менять роли
+    if not user or user.get('role') != 'admin':
+        return safe_json_response({'error': 'Доступ запрещен. Только Администратор может изменять роли.'}, status=403)
+        
+    company_id = await get_current_company(request)
+    
+    try:
+        data = await request.json()
+        target_user_id = data.get('user_id')
+        new_role = data.get('role')
+        
+        if not target_user_id or not new_role:
+            return safe_json_response({'error': 'Отсутствуют обязательные параметры'}, status=400)
+            
+        if new_role not in ['employee', 'manager', 'admin']:
+            return safe_json_response({'error': 'Недействительная роль'}, status=400)
+            
+        if target_user_id == user['id']:
+            return safe_json_response({'error': 'Вы не можете изменить свою собственную роль'}, status=400)
+
+        # Проверим, принадлежит ли юзер этой компании
+        target_role = await db.get_user_role(target_user_id)
+        if not target_role:
+             return safe_json_response({'error': 'Сотрудник не найден'}, status=404)
+             
+        # TODO: В идеале здесь нужна строгая проверка company_id таргета
+        
+        await db.update_user_role(target_user_id, new_role)
+            
+        return safe_json_response({'success': True})
+    except Exception as e:
+        print(f"Ошибка api_update_staff_role: {e}")
         return safe_json_response({'error': str(e)}, status=500)

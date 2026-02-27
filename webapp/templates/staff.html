@@ -1,0 +1,212 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="header-container">
+    <h2 class="page-title">Управление сотрудниками</h2>
+    <button class="btn btn-primary" id="btnInviteStaff">
+        + Пригласить сотрудника
+    </button>
+</div>
+
+<!-- Modal for Invite Link -->
+<div id="inviteModal" class="modal-overlay" style="display: none;">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>Приглашение для сотрудника</h3>
+            <button class="modal-close" id="closeInviteModal">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div id="inviteLoading" style="display: none; text-align: center; padding: 20px;">
+                <p>Генерация ссылки...</p>
+            </div>
+            <div id="inviteResult" style="display: none;">
+                <div class="alert alert-success" style="margin-bottom: 15px;">
+                    <strong>✅ Ссылка сгенерирована!</strong><br>
+                    Отправьте эту ссылку вашему бариста или менеджеру. После перехода по ней он навсегда привяжется к
+                    вашей кофейне.
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <input type="text" id="inviteLinkInput" class="form-control" readonly style="flex-grow: 1;">
+                    <button class="btn btn-success" id="btnCopyInvite">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <h3 class="card-title">Список сотрудников</h3>
+    <div class="table-responsive">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Имя пользователя</th>
+                    <th>Роль</th>
+                    <th>Регистрация</th>
+                    <th>Последняя активность</th>
+                    <th>Действия</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for st in staff %}
+                <tr>
+                    <td>
+                        <strong>{{ st.first_name }} {{ st.last_name or '' }}</strong>
+                        {% if st.username %}
+                        <div style="color: var(--text-secondary); font-size: 0.9em;">@{{ st.username }}</div>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if st.role == 'admin' %}
+                        <span class="badge badge-primary">Admin</span>
+                        {% elif st.role == 'manager' %}
+                        <span class="badge badge-warning">Manager</span>
+                        {% else %}
+                        <span class="badge badge-secondary">Employee</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ st.created_at.strftime('%d.%m.%Y') if st.created_at else 'N/A' }}</td>
+                    <td>{{ st.last_seen.strftime('%d.%m.%Y %H:%M') if st.last_seen else 'N/A' }}</td>
+                    <td>
+                        {% if st.id != user.id %}
+                        <select class="form-control role-select" data-user-id="{{ st.id }}"
+                            style="padding: 4px 8px; font-size: 0.9em; width: auto; display: inline-block;">
+                            <option value="employee" {% if st.role=='employee' %}selected{% endif %}>Employee</option>
+                            <option value="manager" {% if st.role=='manager' %}selected{% endif %}>Manager</option>
+                            <option value="admin" {% if st.role=='admin' %}selected{% endif %}>Admin</option>
+                        </select>
+                        {% else %}
+                        <span style="color: var(--text-secondary); font-size: 0.9em;">Это вы</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="5" class="text-center" style="padding: 30px;">
+                        В вашей кофейне пока нет других сотрудников.<br>
+                        Нажмите кнопку "Пригласить сотрудника", чтобы добавить персонал.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const btnInviteStaff = document.getElementById('btnInviteStaff');
+        const inviteModal = document.getElementById('inviteModal');
+        const closeInviteModal = document.getElementById('closeInviteModal');
+        const inviteLoading = document.getElementById('inviteLoading');
+        const inviteResult = document.getElementById('inviteResult');
+        const inviteLinkInput = document.getElementById('inviteLinkInput');
+        const btnCopyInvite = document.getElementById('btnCopyInvite');
+
+        // Modal behavior
+        function openModal() {
+            inviteModal.style.display = 'flex';
+            inviteLoading.style.display = 'block';
+            inviteResult.style.display = 'none';
+        }
+
+        function closeModal() {
+            inviteModal.style.display = 'none';
+            inviteLinkInput.value = '';
+        }
+
+        btnInviteStaff.addEventListener('click', async () => {
+            openModal();
+            try {
+                const response = await fetch('/api/company/invite', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ role: 'employee' })
+                });
+                const data = await response.json();
+
+                if (response.ok && data.success) {
+                    inviteLoading.style.display = 'none';
+                    inviteResult.style.display = 'block';
+                    inviteLinkInput.value = data.invite_url;
+                } else {
+                    alert('Ошибка: ' + (data.error || 'Неизвестная ошибка'));
+                    closeModal();
+                }
+            } catch (error) {
+                console.error('Error generating invite:', error);
+                alert('Ошибка сети при генерации ссылки');
+                closeModal();
+            }
+        });
+
+        closeInviteModal.addEventListener('click', closeModal);
+
+        // Close modal on click outside
+        inviteModal.addEventListener('click', (e) => {
+            if (e.target === inviteModal) {
+                closeModal();
+            }
+        });
+
+        // Copy to clipboard
+        btnCopyInvite.addEventListener('click', () => {
+            inviteLinkInput.select();
+            document.execCommand('copy');
+
+            const originalHtml = btnCopyInvite.innerHTML;
+            btnCopyInvite.innerHTML = '✅';
+            setTimeout(() => {
+                btnCopyInvite.innerHTML = originalHtml;
+            }, 2000);
+        });
+
+        // Role change handler
+        const roleSelects = document.querySelectorAll('.role-select');
+        roleSelects.forEach(select => {
+            select.addEventListener('change', async (e) => {
+                const userId = e.target.dataset.userId;
+                const newRole = e.target.value;
+
+                if (!confirm(`Вы уверены, что хотите изменить роль этого пользователя на ${newRole.toUpperCase()}?`)) {
+                    // Revert selection if cancelled
+                    e.target.value = e.target.querySelector('[selected]').value;
+                    return;
+                }
+
+                try {
+                    const response = await fetch('/api/company/update_role', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ user_id: parseInt(userId), role: newRole })
+                    });
+
+                    const data = await response.json();
+                    if (response.ok && data.success) {
+                        // Update DOM to reflect new selected option for next time
+                        e.target.querySelectorAll('option').forEach(opt => opt.removeAttribute('selected'));
+                        e.target.querySelector(`option[value="${newRole}"]`).setAttribute('selected', 'selected');
+                        // Reload to update visual badges
+                        window.location.reload();
+                    } else {
+                        alert('Ошибка: ' + (data.error || 'Неизвестная ошибка'));
+                        e.target.value = e.target.querySelector('[selected]').value;
+                    }
+                } catch (error) {
+                    console.error('Error updating role:', error);
+                    alert('Ошибка сети');
+                    e.target.value = e.target.querySelector('[selected]').value;
+                }
+            });
+        });
+    });
+</script>
+{% endblock %}

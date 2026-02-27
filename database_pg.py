@@ -454,6 +454,17 @@ class DatabasePG:
                     last_seen = CURRENT_TIMESTAMP
             """, user_id, username, first_name, last_name, final_company_id)
 
+    async def get_users_by_company(self, company_id: int) -> List[Dict]:
+        """Получить список всех сотрудников франшизы"""
+        async with self.pool.acquire() as conn:
+            records = await conn.fetch("""
+                SELECT id, username, first_name, last_name, role, is_active, created_at, last_seen
+                FROM users 
+                WHERE company_id = $1
+                ORDER BY created_at DESC
+            """, company_id)
+            return [dict(r) for r in records]
+
     async def get_user_role(self, user_id: int) -> str:
         """Получить роль пользователя"""
         async with self.pool.acquire() as conn:
