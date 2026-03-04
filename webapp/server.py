@@ -243,7 +243,6 @@ async def login_page(request):
     
     return aiohttp_jinja2.render_template('login.html', request, context)
 
-
 async def logout(request):
     """Выход из системы"""
     session = await aiohttp_session.get_session(request)
@@ -1198,6 +1197,31 @@ async def api_update_staff_role(request):
         return safe_json_response({'success': True})
     except Exception as e:
         print(f"Ошибка api_update_staff_role: {e}")
+        return safe_json_response({'error': str(e)}, status=500)
+
+async def api_update_real_name(request):
+    """API: Обновить реальное имя (real_name) сотрудника"""
+    user = await get_current_user(request)
+    if not user or user.get('role') not in ['admin', 'superadmin']:
+        return safe_json_response({'error': 'Доступ запрещен. Только администратор может изменять имена.'}, status=403)
+        
+    company_id = await get_current_company(request)
+    if not company_id:
+        return safe_json_response({'error': 'Компания не найдена'}, status=404)
+        
+    try:
+        data = await request.json()
+        target_user_id = data.get('user_id')
+        real_name = data.get('real_name', '').strip()
+        
+        if not target_user_id:
+            return safe_json_response({'error': 'Отсутствует ID пользователя'}, status=400)
+            
+        await db.update_user_real_name(target_user_id, real_name)
+        return safe_json_response({'success': True})
+        
+    except Exception as e:
+        print(f"Ошибка api_update_real_name: {e}")
         return safe_json_response({'error': str(e)}, status=500)
 
 # ==========================================

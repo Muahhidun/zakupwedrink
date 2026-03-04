@@ -88,34 +88,47 @@ async def migrate():
             # --- 4. Миграция Остатков (stock) ---
             print("⏳ Миграция остатков (stock)...")
             stocks = await src_conn.fetch("SELECT * FROM stock")
-            stock_count = 0
+            stock_args = []
             for s in stocks:
                 if s['product_id'] in product_mapping:
-                    new_pid = product_mapping[s['product_id']]
-                    try:
-                        await tgt_conn.execute("""
-                            INSERT INTO stock (company_id, product_id, date, quantity, weight)
-                            VALUES ($1, $2, $3, $4, $5)
-                            ON CONFLICT (company_id, product_id, date) DO DO NOTHING
-                        """, TARGET_COMPANY_ID, new_pid, s['date'], s['quantity'], s['weight'])
-                        stock_count += 1
-                    except Exception as e:
-                        print(f"Ошибка миграции остатка для товара {new_pid} на {s['date']}: {e}")
-            print(f"✅ Мигрировано {stock_count} записей об остатках.")
+                    stock_args.append((
+                        TARGET_COMPANY_ID, 
+                        product_mapping[s['product_id']], 
+                        s['date'], 
+                        s['quantity'], 
+                        s['weight']
+                    ))
+            if stock_args:
+                try:
+                    await tgt_conn.executemany("""
+                        INSERT INTO stock (company_id, product_id, date, quantity, weight)
+                        VALUES ($1, $2, $3, $4, $5)
+                        ON CONFLICT (company_id, product_id, date) DO NOTHING
+                    """, stock_args)
+                except Exception as e:
+                    print(f"⚠️ Ошибка bulk миграции остатков: {e}")
+            print(f"✅ Мигрировано {len(stock_args)} записей об остатках.")
 
             # --- 5. Миграция Приемок (supplies) ---
             print("⏳ Миграция приемок (supplies)...")
             supplies = await src_conn.fetch("SELECT * FROM supplies")
-            supply_count = 0
+            supply_args = []
             for s in supplies:
                 if s['product_id'] in product_mapping:
-                    new_pid = product_mapping[s['product_id']]
-                    await tgt_conn.execute("""
-                        INSERT INTO supplies (company_id, product_id, date, boxes, weight, cost)
-                        VALUES ($1, $2, $3, $4, $5, $6)
-                    """, TARGET_COMPANY_ID, new_pid, s['date'], s['boxes'], s['weight'], s['cost'])
-                    supply_count += 1
-            print(f"✅ Мигрировано {supply_count} приемок.")
+                    supply_args.append((
+                        TARGET_COMPANY_ID, 
+                        product_mapping[s['product_id']], 
+                        s['date'], 
+                        s['boxes'], 
+                        s['weight'], 
+                        s['cost']
+                    ))
+            if supply_args:
+                await tgt_conn.executemany("""
+                    INSERT INTO supplies (company_id, product_id, date, boxes, weight, cost)
+                    VALUES ($1, $2, $3, $4, $5, $6)
+                """, supply_args)
+            print(f"✅ Мигрировано {len(supply_args)} приемок.")
 
             # --- 6. Заказы в историю (Orders) ---
             print("⏳ Миграция истории заказов...")
@@ -136,14 +149,22 @@ async def migrate():
                     
                     # Фильтруем айтемы для этого заказа
                     items_for_order = [i for i in order_items if i['order_id'] == order['id']]
+                    order_items_args = []
                     
                     for item in items_for_order:
                         if item['product_id'] in product_mapping:
-                            new_pid = product_mapping[item['product_id']]
-                            await tgt_conn.execute("""
-                                INSERT INTO order_items (order_id, product_id, boxes_ordered, weight_ordered, cost)
-                                VALUES ($1, $2, $3, $4, $5)
-                            """, new_order_id, new_pid, item['boxes_ordered'], item['weight_ordered'], item['cost'])
+                            order_items_args.append((
+                                new_order_id, 
+                                product_mapping[item['product_id']], 
+                                item['boxes_ordered'], 
+                                item['weight_ordered'], 
+                                item['cost']
+                            ))
+                    if order_items_args:
+                        await tgt_conn.executemany("""
+                            INSERT INTO order_items (order_id, product_id, boxes_ordered, weight_ordered, cost)
+                            VALUES ($1, $2, $3, $4, $5)
+                        """, order_items_args)
                 print(f"✅ Мигрировано {len(orders)} заказов и их состав.")
             except Exception as e:
                 print(f"⚠️ Ошибка при миграции истории заказов (возможно таблиц не существует): {e}")

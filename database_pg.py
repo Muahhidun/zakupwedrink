@@ -40,6 +40,7 @@ class DatabasePG:
                     username TEXT,
                     first_name TEXT,
                     last_name TEXT,
+                    real_name TEXT,
                     role TEXT DEFAULT 'user',
                     is_active BOOLEAN DEFAULT TRUE,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -458,7 +459,7 @@ class DatabasePG:
         """Получить список всех сотрудников франшизы"""
         async with self.pool.acquire() as conn:
             records = await conn.fetch("""
-                SELECT id, username, first_name, last_name, role, is_active, created_at, last_seen
+                SELECT id, username, first_name, last_name, real_name, role, is_active, created_at, last_seen
                 FROM users 
                 WHERE company_id = $1
                 ORDER BY created_at DESC
@@ -475,6 +476,11 @@ class DatabasePG:
         """Обновление роли пользователя"""
         async with self.pool.acquire() as conn:
             await conn.execute("UPDATE users SET role = $1 WHERE id = $2", new_role, user_id)
+
+    async def update_user_real_name(self, user_id: int, real_name: str):
+        """Обновление реального ФИО пользователя"""
+        async with self.pool.acquire() as conn:
+            await conn.execute("UPDATE users SET real_name = $1 WHERE id = $2", real_name, user_id)
 
     async def set_user_role(self, user_id: int, role: str):
         """Установить роль пользователю"""
