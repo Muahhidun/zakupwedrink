@@ -942,6 +942,7 @@ def create_app():
     app.router.add_get('/staff', staff_page)
     app.router.add_post('/api/company/invite', api_invite_staff)
     app.router.add_post('/api/company/update_role', api_update_staff_role)
+    app.router.add_post('/api/company/update_real_name', api_update_real_name)
 
     app.router.add_get('/settings', settings_page)
     app.router.add_get('/api/company/details', api_get_company_details)
