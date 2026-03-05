@@ -471,8 +471,9 @@ async def calculate_order(db, days: int, lookback_days: int = 30) -> Dict:
     lookback_days: за сколько дней анализировать расход для среднего значения.
     """
     try:
-        # Получаем данные об остатках и расходе за указанный период ретроспективы
-        stock_data = await db.get_stock_with_consumption(lookback_days=lookback_days)
+        from handlers.orders import prepare_order_data
+        # Получаем данные об остатках и расходе за указанный период ретроспективы (с фильтрацией)
+        stock_data = await prepare_order_data(db, lookback_days=lookback_days)
         
         # Получаем список для заказа на указанное кол-во дней вперед
         products_to_order = get_products_to_order(

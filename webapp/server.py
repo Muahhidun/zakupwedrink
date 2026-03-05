@@ -323,10 +323,41 @@ async def generate_order_api(request):
         if days <= 0 or lookback <= 0:
             return safe_json_response({'error': 'Параметры должны быть больше 0'}, status=400)
             
-        from utils.calculations import calculate_order
+        from utils.calculations import get_products_to_order
+        from handlers.orders import prepare_order_data
         
-        # Получаем данные логики
-        result = await calculate_order(db, days, lookback_days=lookback)
+        # Получаем данные логики с учетом товаров в пути
+        stock_data = await prepare_order_data(db)
+        products_to_order = get_products_to_order(
+            stock_data,
+            days_threshold=days,
+            order_days=days,
+            use_02_rule=True,
+            include_pending=True
+        )
+        
+        total_cost = sum(p['order_cost'] for p in products_to_order)
+        
+        # Форматируем под формат ответа API
+        api_items = []
+        for p in products_to_order:
+            api_items.append({
+                'product_id': p['product_id'],
+                'name': p['name_russian'],
+                'daily_consumption': p['avg_daily_consumption'],
+                'current_stock': p['current_stock'],
+                'needed_quantity': p['needed_weight'],
+                'order_boxes': p['boxes_to_order'],
+                'price_per_box': p['price_per_box'],
+                'item_total': p['order_cost']
+            })
+            
+        result = {
+            'days': days,
+            'lookback_days': lookback,
+            'total_cost': total_cost,
+            'items': api_items
+        }
         return safe_json_response(result)
     except Exception as e:
         import traceback

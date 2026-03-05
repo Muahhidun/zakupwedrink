@@ -19,15 +19,16 @@ async def send_auto_purchase_order(bot: Bot):
     """
     try:
         from database import Database
+        from database_pg import DatabasePG
         from utils.calculations import get_auto_order_with_threshold, format_auto_order_list
         from handlers.orders import prepare_order_data
 
         database_url = os.getenv('DATABASE_URL')
-        if not database_url:
-            logger.warning("⚠️ DATABASE_URL не установлен")
-            return
-
-        db = Database("wedrink.db")
+        if database_url:
+            db = DatabasePG(database_url)
+        else:
+            db = Database("wedrink.db")
+            
         await db.init_db()
 
         logger.info("🔍 Рассчитываю автоматический заказ на 14 дней...")
@@ -94,8 +95,14 @@ async def check_and_send_reminder(bot: Bot, group_chat_id: str, reminder_type: s
     try:
         # Импортируем здесь чтобы избежать циклических зависимостей
         from database import Database
+        from database_pg import DatabasePG
 
-        db = Database("wedrink.db")
+        database_url = os.getenv('DATABASE_URL')
+        if database_url:
+            db = DatabasePG(database_url)
+        else:
+            db = Database("wedrink.db")
+            
         await db.init_db()
 
         # Проверяем были ли введены остатки сегодня
