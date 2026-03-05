@@ -383,9 +383,14 @@ class DatabasePG:
         days_60, cons_60 = await fetch_consumption_for_period(60)
         days_90, cons_90 = await fetch_consumption_for_period(90)
 
+        # Bulk fetch pending orders
+        pending_weights = await self.get_all_pending_weights(company_id)
+
         for item in latest_stock:
             pid = item['product_id']
-            pending_boxes = await self.get_pending_weight_for_product(company_id, pid) / item['package_weight'] if item['package_weight'] else 0
+            # Get pending weight from map
+            pending_w = pending_weights.get(pid, 0.0)
+            pending_boxes = pending_w / item['package_weight'] if item['package_weight'] else 0
             total_available = item['quantity'] + pending_boxes
 
             # Evaluate consumption tiers
@@ -726,6 +731,18 @@ class DatabasePG:
         """Отменить заказ"""
         async with self.pool.acquire() as conn:
             await conn.execute("UPDATE pending_orders SET status = 'cancelled' WHERE id = $1", order_id)
+
+    async def get_all_pending_weights(self, company_id: int) -> Dict[int, float]:
+        """Получить вес в пути (pending orders) для всех товаров компани"""
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch("""
+                SELECT i.product_id, SUM(i.weight_ordered) as total_weight
+                FROM pending_order_items i
+                JOIN pending_orders o ON i.order_id = o.id
+                WHERE o.company_id = $1 AND o.status = 'pending'
+                GROUP BY i.product_id
+            """, company_id)
+            return {row['product_id']: float(row['total_weight']) for row in rows}
 
     async def get_pending_weight_for_product(self, company_id: int, product_id: int) -> float:
         """Сколько кг сейчас в пути (в pending orders)"""
