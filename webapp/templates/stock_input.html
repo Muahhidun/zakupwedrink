@@ -268,7 +268,7 @@
 
 {% block extra_js %}
 <script>
-    const editSubmissionId = {{ edit_submission_id | default ('null') | safe }};
+    const editSubmissionId = {% if edit_submission_id %}{{ edit_submission_id }}{% else %}null{% endif %};
 
     // Variables
     let products = [];
