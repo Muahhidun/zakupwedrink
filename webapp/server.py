@@ -942,6 +942,64 @@ async def api_reject_submission(request):
         print(f"Ошибка отклонения заявки через Web UI: {e}")
         return safe_json_response({'error': str(e)}, status=500)
 
+async def send_order_telegram_api(request):
+    """API: Отправить сгенерированный список закупа в Telegram"""
+    try:
+        user = await get_current_user(request)
+        if not user:
+             return safe_json_response({'error': 'Unauthorized'}, status=403)
+             
+        data = await request.json()
+        days = data.get('days')
+        total_cost = data.get('total_cost')
+        items = data.get('items', [])
+        
+        bot = get_bot_instance()
+        if not bot:
+             return safe_json_response({'error': 'Бот не инициализирован. Уведомление не отправлено.'}, status=500)
+             
+        # Формируем сообщение аналогично боту
+        message_lines = [
+            f"🛒 <b>СПИСОК ДЛЯ ЗАКУПА (на {days} дней)</b>\n"
+        ]
+        
+        for item in items:
+            name = item.get('name')
+            boxes = item.get('order_boxes')
+            daily = item.get('daily_consumption', 0)
+            current = item.get('current_stock', 0)
+            item_total = item.get('item_total', 0)
+            
+            # Логика иконок
+            if boxes > 5:
+                icon = "📦"
+            elif boxes > 0:
+                icon = "⚠️"
+            else:
+                icon = "✅"
+                
+            if boxes > 0:
+                message_lines.append(
+                    f"{icon} <b>{name}</b>\n"
+                    f"   Остаток: {current:.1f} | Расход: {daily:.2f} уп./день\n"
+                    f"   📦 <b>Заказать: {boxes} уп.</b> = {item_total:,.0f}₸\n"
+                )
+                
+        message_lines.append(f"💰 <b>ИТОГО К ЗАКУПУ: {total_cost:,.0f}₸</b>")
+        message = "\n".join(message_lines)
+        
+        await bot.send_message(
+            chat_id=user['id'],
+            text=message,
+            parse_mode="HTML"
+        )
+        
+        return safe_json_response({'success': True, 'message': 'Список закупа успешно отправлен в ваш Telegram'})
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return safe_json_response({'error': str(e)}, status=500)
+
 
 def create_app():
     """Создать приложение aiohttp"""
@@ -997,6 +1055,7 @@ def create_app():
     # Роуты для редактирования заказов
     app.router.add_post('/api/draft_order', save_draft_order)
     app.router.add_get('/api/draft_order/{draft_key}', get_draft_order)
+    app.router.add_post('/api/orders/send_telegram', send_order_telegram_api)
 
     # Применяем CORS ко всем роутам
     for route in list(app.router.routes()):
