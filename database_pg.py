@@ -456,12 +456,12 @@ class DatabasePG:
             """, user_id, username, first_name, last_name, final_company_id)
 
     async def get_users_by_company(self, company_id: int) -> List[Dict]:
-        """Получить список всех сотрудников франшизы"""
+        """Получить список всех сотрудников франшизы (только активных)"""
         async with self.pool.acquire() as conn:
             records = await conn.fetch("""
                 SELECT id, username, first_name, last_name, real_name, role, is_active, created_at, last_seen
                 FROM users 
-                WHERE company_id = $1
+                WHERE company_id = $1 AND is_active = TRUE
                 ORDER BY created_at DESC
             """, company_id)
             return [dict(r) for r in records]
@@ -488,12 +488,12 @@ class DatabasePG:
             await conn.execute("UPDATE users SET role = $2 WHERE id = $1", user_id, role)
 
     async def list_users_with_roles(self, company_id: int) -> List[Dict]:
-        """Список всех пользователей компании"""
+        """Список всех активных пользователей компании"""
         async with self.pool.acquire() as conn:
             rows = await conn.fetch("""
                 SELECT id, first_name, last_name, username, role, last_seen 
                 FROM users 
-                WHERE company_id = $1
+                WHERE company_id = $1 AND is_active = TRUE
                 ORDER BY 
                     CASE WHEN role='admin' THEN 1 WHEN role='manager' THEN 2 ELSE 3 END,
                     last_seen DESC
@@ -507,15 +507,25 @@ class DatabasePG:
             return [row['id'] for row in rows]
 
     async def get_user_info(self, user_id: int) -> Dict:
-        """Получить информацию о пользователе"""
+        """Получить информацию о пользователе со статусом активности"""
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow("""
-                SELECT u.id, u.first_name, u.last_name, u.username, u.role, u.company_id, c.name as company_name
+                SELECT u.id, u.first_name, u.last_name, u.username, u.role, u.company_id, u.is_active, c.name as company_name
                 FROM users u
                 LEFT JOIN companies c ON u.company_id = c.id
                 WHERE u.id = $1
             """, user_id)
             return dict(row) if row else {}
+            
+    async def remove_user(self, user_id: int, company_id: int) -> bool:
+        """Пометить пользователя как неактивного (удален) из компании"""
+        async with self.pool.acquire() as conn:
+            result = await conn.execute("""
+                UPDATE users 
+                SET is_active = FALSE, role = 'removed'
+                WHERE id = $1 AND company_id = $2 AND role != 'superadmin'
+            """, user_id, company_id)
+            return result.endswith('1')
 
     async def create_stock_submission(self, company_id: int, user_id: int, date, items: List[Dict]) -> int:
         """Создать заявку на ввод остатков"""

@@ -30,6 +30,12 @@ async def cmd_start(message: Message, db, user_role: str, is_admin: bool):
             target_role = invite_data.get('r', 'employee')
             
             if target_company_id:
+                # Проверяем не был ли пользователь удален из этой компании
+                user_info = await db.get_user_info(message.from_user.id)
+                if user_info and user_info.get('company_id') == target_company_id and user_info.get('is_active') == False:
+                    await message.answer("❌ Вы были удалены из этой базы и не можете присоединиться снова.")
+                    return
+
                 # Регистрируем пользователя сразу в нужной компании с нужной ролью
                 await db.add_or_update_user(
                     user_id=message.from_user.id,

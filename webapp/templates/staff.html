@@ -123,13 +123,22 @@
                     <td>{{ st.last_seen.strftime('%d.%m.%Y %H:%M') if st.last_seen else 'N/A' }}</td>
                     <td>
                         {% if st.id != user.id %}
-                        <select class="form-control role-select" data-user-id="{{ st.id }}"
-                            style="padding: 4px 8px; font-size: 0.9em; width: auto; display: inline-block;">
-                            <option value="employee" {% if st.role=='employee' %}selected{% endif %}>Employee
-                            </option>
-                            <option value="manager" {% if st.role=='manager' %}selected{% endif %}>Manager</option>
-                            <option value="admin" {% if st.role=='admin' %}selected{% endif %}>Admin</option>
-                        </select>
+                        <div style="display: flex; align-items: center; justify-content: flex-start; gap: 8px;">
+                            <select class="form-control role-select" data-user-id="{{ st.id }}"
+                                style="padding: 4px 8px; font-size: 0.9em; width: auto; display: inline-block;">
+                                <option value="employee" {% if st.role=='employee' %}selected{% endif %}>Employee
+                                </option>
+                                <option value="manager" {% if st.role=='manager' %}selected{% endif %}>Manager</option>
+                                <option value="admin" {% if st.role=='admin' %}selected{% endif %}>Admin</option>
+                            </select>
+                            {% if user.role in ['admin', 'superadmin'] %}
+                            <button class="btn btn-icon btn-remove-staff" data-userid="{{ st.id }}"
+                                data-username="{{ st.real_name or st.first_name }}" title="Удалить сотрудника"
+                                style="padding: 4px; background: transparent; color: var(--danger-color, #e74c3c); border: none; cursor: pointer;">
+                                <span class="material-symbols-rounded" style="font-size: 18px;">delete</span>
+                            </button>
+                            {% endif %}
+                        </div>
                         {% else %}
                         <span style="color: var(--text-secondary); font-size: 0.9em;">Это вы</span>
                         {% endif %}
@@ -316,6 +325,45 @@
                 submitBtn.textContent = originalText;
                 submitBtn.disabled = false;
             }
+        });
+
+        // Remove Staff Handler
+        const btnRemoveStaff = document.querySelectorAll('.btn-remove-staff');
+        btnRemoveStaff.forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                const target = e.currentTarget;
+                const userId = target.dataset.userid;
+                const userName = target.dataset.username;
+
+                if (!confirm(`Вы действительно хотите удалить сотрудника ${userName}? Он потеряет доступ к базе и не сможет снова присоединиться.`)) {
+                    return;
+                }
+
+                target.disabled = true;
+                target.style.opacity = '0.5';
+
+                try {
+                    const response = await fetch('/api/company/remove_staff', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ user_id: parseInt(userId) })
+                    });
+
+                    const data = await response.json();
+                    if (response.ok && data.success) {
+                        window.location.reload();
+                    } else {
+                        alert('Ошибка: ' + (data.error || 'Неизвестная ошибка'));
+                        target.disabled = false;
+                        target.style.opacity = '1';
+                    }
+                } catch (error) {
+                    console.error('Error removing staff:', error);
+                    alert('Ошибка сети');
+                    target.disabled = false;
+                    target.style.opacity = '1';
+                }
+            });
         });
     });
 </script>

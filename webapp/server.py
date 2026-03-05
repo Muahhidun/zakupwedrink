@@ -943,6 +943,7 @@ def create_app():
     app.router.add_post('/api/company/invite', api_invite_staff)
     app.router.add_post('/api/company/update_role', api_update_staff_role)
     app.router.add_post('/api/company/update_real_name', api_update_real_name)
+    app.router.add_post('/api/company/remove_staff', api_remove_staff)
 
     app.router.add_get('/settings', settings_page)
     app.router.add_get('/api/company/details', api_get_company_details)
@@ -1223,6 +1224,36 @@ async def api_update_real_name(request):
         
     except Exception as e:
         print(f"Ошибка api_update_real_name: {e}")
+        return safe_json_response({'error': str(e)}, status=500)
+
+async def api_remove_staff(request):
+    """API: Удалить сотрудника (пометить как уволенного)"""
+    user = await get_current_user(request)
+    if not user or user.get('role') not in ['admin', 'superadmin']:
+        return safe_json_response({'error': 'Доступ запрещен. Только администратор может удалять сотрудников.'}, status=403)
+        
+    company_id = await get_current_company(request)
+    if not company_id:
+        return safe_json_response({'error': 'Компания не найдена'}, status=404)
+        
+    try:
+        data = await request.json()
+        target_user_id = data.get('user_id')
+        
+        if not target_user_id:
+            return safe_json_response({'error': 'Отсутствует ID пользователя'}, status=400)
+            
+        if target_user_id == user['id']:
+            return safe_json_response({'error': 'Вы не можете удалить сами себя'}, status=400)
+            
+        success = await db.remove_user(target_user_id, company_id)
+        if success:
+            return safe_json_response({'success': True})
+        else:
+            return safe_json_response({'error': 'Сотрудник не найден или не может быть удален'}, status=400)
+            
+    except Exception as e:
+        print(f"Ошибка api_remove_staff: {e}")
         return safe_json_response({'error': str(e)}, status=500)
 
 # ==========================================
