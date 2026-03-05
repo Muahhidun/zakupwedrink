@@ -958,34 +958,18 @@ async def send_order_telegram_api(request):
         if not bot:
              return safe_json_response({'error': 'Бот не инициализирован. Уведомление не отправлено.'}, status=500)
              
-        # Формируем сообщение аналогично боту
+        # Формируем официальное сообщение для поставщика
         message_lines = [
-            f"🛒 <b>СПИСОК ДЛЯ ЗАКУПА (на {days} дней)</b>\n"
+            f"<b>Заявка на поставку (на {days} дней)</b>\n"
         ]
         
         for item in items:
             name = item.get('name')
             boxes = item.get('order_boxes')
-            daily = item.get('daily_consumption', 0)
-            current = item.get('current_stock', 0)
-            item_total = item.get('item_total', 0)
             
-            # Логика иконок
-            if boxes > 5:
-                icon = "📦"
-            elif boxes > 0:
-                icon = "⚠️"
-            else:
-                icon = "✅"
-                
             if boxes > 0:
-                message_lines.append(
-                    f"{icon} <b>{name}</b>\n"
-                    f"   Остаток: {current:.1f} | Расход: {daily:.2f} уп./день\n"
-                    f"   📦 <b>Заказать: {boxes} уп.</b> = {item_total:,.0f}₸\n"
-                )
+                message_lines.append(f"- {name}: {boxes} уп.")
                 
-        message_lines.append(f"💰 <b>ИТОГО К ЗАКУПУ: {total_cost:,.0f}₸</b>")
         message = "\n".join(message_lines)
         
         await bot.send_message(
