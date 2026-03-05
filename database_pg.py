@@ -357,39 +357,54 @@ class DatabasePG:
             """, company_id, start_date, end_date)
             return [dict(row) for row in rows]
 
-    async def get_stock_with_consumption(self, company_id: int, lookback_days: int = 14) -> List[Dict]:
-        """Получить текущие остатки и средний расход"""
+    async def get_stock_with_consumption(self, company_id: int, base_lookback_days: int = 30) -> List[Dict]:
+        """Получить текущие остатки и средний расход с умным увеличением периода для редко расходуемых товаров"""
         from datetime import timedelta
         latest_stock = await self.get_latest_stock(company_id)
         if not latest_stock:
             return []
             
         latest_date = latest_stock[0]['date']
-        start_date = latest_date - timedelta(days=lookback_days)
-        real_start_date = await self.get_latest_date_before(company_id, start_date + timedelta(days=1))
         
-        if not real_start_date:
-            real_start_date = latest_date - timedelta(days=lookback_days)
-            
-        actual_days = (latest_date - real_start_date).days
-        if actual_days <= 0:
-            actual_days = 1
-            
-        consumption = await self.calculate_consumption(company_id, real_start_date, latest_date)
-        consumption_map = {item['product_id']: item for item in consumption}
+        # Helper to get consumption for a specific lookback period
+        async def fetch_consumption_for_period(days: int):
+            start_date = latest_date - timedelta(days=days)
+            real_start_date = await self.get_latest_date_before(company_id, start_date + timedelta(days=1))
+            if not real_start_date:
+                real_start_date = latest_date - timedelta(days=days)
+            actual_days = (latest_date - real_start_date).days
+            if actual_days <= 0:
+                actual_days = 1
+            cons_list = await self.calculate_consumption(company_id, real_start_date, latest_date)
+            return actual_days, {item['product_id']: item for item in cons_list}
+
+        # Fetch tiered consumption data
+        days_30, cons_30 = await fetch_consumption_for_period(30)
+        days_60, cons_60 = await fetch_consumption_for_period(60)
+        days_90, cons_90 = await fetch_consumption_for_period(90)
 
         for item in latest_stock:
             pid = item['product_id']
-            cons = consumption_map.get(pid)
-            
             pending_boxes = await self.get_pending_weight_for_product(company_id, pid) / item['package_weight'] if item['package_weight'] else 0
+            total_available = item['quantity'] + pending_boxes
+
+            # Evaluate consumption tiers
+            actual_days = days_30
+            cons = cons_30.get(pid)
+            
+            if not cons or cons['consumed_quantity'] <= 0:
+                actual_days = days_60
+                cons = cons_60.get(pid)
+                
+                if not cons or cons['consumed_quantity'] <= 0:
+                    actual_days = days_90
+                    cons = cons_90.get(pid)
             
             if cons and cons['consumed_quantity'] > 0:
                 avg_daily_qty = cons['consumed_quantity'] / actual_days
                 avg_daily_weight = cons['consumed_weight'] / actual_days
                 item['avg_daily_consumption_qty'] = round(avg_daily_qty, 2)
                 item['avg_daily_consumption_weight'] = round(avg_daily_weight, 2)
-                total_available = item['quantity'] + pending_boxes
                 item['days_remaining'] = round(total_available / avg_daily_qty, 1) if avg_daily_qty > 0 else 999
             else:
                 item['avg_daily_consumption_qty'] = 0
