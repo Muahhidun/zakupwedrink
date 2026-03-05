@@ -530,10 +530,10 @@ async def save_stock(request):
 
 
 async def get_latest_stock(request):
-    """API: Получить последние остатки"""
+    """API: Получить последние остатки (с расчетом расхода)"""
     try:
         company_id = await get_current_company(request)
-        stock = await db.get_latest_stock(company_id)
+        stock = await db.get_stock_with_consumption(company_id, lookback_days=14)
 
         for item in stock:
             if 'created_at' in item and item['created_at']:
