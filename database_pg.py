@@ -300,10 +300,10 @@ class DatabasePG:
                 )
                 SELECT rs.product_id, rs.quantity, rs.weight, rs.date,
                        p.name_chinese, p.name_russian, p.name_internal,
-                       p.package_weight, p.units_per_box
+                       p.package_weight, p.units_per_box, p.box_weight, p.price_per_box, p.unit
                 FROM RankedStock rs
                 JOIN products p ON rs.product_id = p.id
-                WHERE rs.rn = 1
+                WHERE rs.rn = 1 AND p.is_active = TRUE
                 ORDER BY p.name_internal
             """, company_id)
             return [dict(row) for row in rows]

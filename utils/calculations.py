@@ -200,7 +200,8 @@ def get_products_to_order(stock_data: List[Dict], days_threshold: int = 7,
     products_to_order = []
 
     for item in stock_data:
-        avg_consumption = item.get('avg_daily_consumption', 0)
+        # DB variants return either avg_daily_consumption or avg_daily_consumption_weight
+        avg_consumption = item.get('avg_daily_consumption_weight', item.get('avg_daily_consumption', 0))
         current_stock = item.get('weight', 0)
         pending_weight = item.get('pending_weight', 0) if include_pending else 0
 
