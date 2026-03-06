@@ -167,15 +167,11 @@
             ]);
 
             currentStockData = await stockRes.json();
-            const productsInfoArray = await productsRes.json();
+            const productsInfo = await productsRes.json();
 
             if (!stockRes.ok || !productsRes.ok) {
                 throw new Error('Failed to fetch data');
             }
-
-            productsInfoArray.forEach(p => {
-                productsInfoDict[p.id] = p;
-            });
 
             if (currentStockData.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 32px">Остатки не найдены</td></tr>';
