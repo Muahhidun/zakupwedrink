@@ -7,25 +7,17 @@
 {% block extra_css %}
 <style>
     .supply-container {
-        padding: var(--spacing-lg);
         max-width: 1200px;
         margin: 0 auto;
     }
 
     .page-header {
         display: flex;
-        justify-content: space-between;
+        justify-content: flex-end;
         align-items: center;
-        margin-bottom: var(--spacing-xl);
+        margin-bottom: 24px;
         flex-wrap: wrap;
         gap: 16px;
-    }
-
-    .page-title {
-        font-size: 24px;
-        font-weight: 700;
-        color: var(--text-primary);
-        margin: 0;
     }
 
 
@@ -85,7 +77,6 @@
 {% block content %}
 <div class="supply-container fade-in-up">
     <div class="page-header">
-        <h1 class="page-title">Приемка товаров (Поставка)</h1>
         <div style="display: flex; align-items: center; gap: 16px;">
             <div class="form-group" style="margin-bottom: 0;">
                 <input type="date" id="supplyDate" class="form-control" title="Дата поставки">
