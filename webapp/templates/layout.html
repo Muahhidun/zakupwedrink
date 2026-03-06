@@ -102,6 +102,13 @@
                     style="display: none; height: 1px; background-color: #eee; margin: 10px 15px;"></li>
 
                 <li class="nav-item admin-only" style="display: none;">
+                    <a href="/schedule" class="nav-link {% block nav_schedule %}{% endblock %}" data-route="/schedule">
+                        <span class="material-symbols-rounded">calendar_month</span>
+                        <span class="nav-text">График смен</span>
+                    </a>
+                </li>
+
+                <li class="nav-item admin-only" style="display: none;">
                     <a href="/staff" class="nav-link {% block nav_staff %}{% endblock %}" data-route="/staff">
                         <span class="material-symbols-rounded">group</span>
                         <span class="nav-text">Сотрудники</span>

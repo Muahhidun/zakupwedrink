@@ -163,8 +163,12 @@ async def check_and_send_reminder(bot: Bot, group_chat_id: str, reminder_type: s
             logger.error(f"❌ Ошибка отправки в группу: {e}")
 
         # Отправляем всем пользователям в личку
-        user_ids = await db.get_all_active_users()
-        logger.info(f"📢 Рассылка напоминаний {len(user_ids)} пользователям...")
+        if hasattr(db, 'get_active_users_for_reminder'):
+            user_ids = await db.get_active_users_for_reminder(company_id, today.isoformat())
+            logger.info(f"📢 Рассылка напоминаний {len(user_ids)} пользователям (с учетом графика смен)...")
+        else:
+            user_ids = await db.get_all_active_users()
+            logger.info(f"📢 Рассылка напоминаний {len(user_ids)} пользователям...")
 
         success_count = 0
         for user_id in user_ids:

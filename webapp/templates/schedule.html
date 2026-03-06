@@ -1,0 +1,455 @@
+{% extends "layout.html" %}
+
+{% block title %}График смен{% endblock %}
+
+{% block extra_head %}
+<!-- Flatpickr for time selection -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<style>
+    .calendar-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: 16px;
+        padding: 24px;
+        box-shadow: var(--shadow-sm);
+    }
+
+    .calendar-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 24px;
+    }
+
+    .calendar-month-year {
+        font-size: 20px;
+        font-weight: 700;
+        text-transform: capitalize;
+    }
+
+    .calendar-nav {
+        display: flex;
+        gap: 8px;
+    }
+
+    .calendar-grid {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 8px;
+    }
+
+    .calendar-day-header {
+        text-align: right;
+        font-weight: 600;
+        font-size: 13px;
+        color: var(--text-secondary);
+        padding-bottom: 8px;
+    }
+
+    .calendar-day {
+        min-height: 120px;
+        background: var(--bg-lighter);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        padding: 8px;
+        position: relative;
+        transition: all 0.2s;
+    }
+
+        {
+        % if role in ['admin',
+        'manager'] %
+    }
+
+    .calendar-day:hover {
+        border-color: var(--primary);
+        cursor: pointer;
+        background: rgba(74, 108, 247, 0.03);
+    }
+
+        {
+        % endif %
+    }
+
+    .calendar-day.empty {
+        background: transparent;
+        border-color: transparent;
+        cursor: default;
+    }
+
+    .calendar-day.today {
+        border-color: var(--primary);
+        background: rgba(74, 108, 247, 0.05);
+    }
+
+    .day-number {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--text-tertiary);
+    }
+
+    .calendar-day.today .day-number {
+        color: var(--primary);
+    }
+
+    .shifts-container {
+        margin-top: 24px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .shift-pill {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-size: 11px;
+        padding: 4px 6px;
+        border-radius: 6px;
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .shift-pill .shift-name {
+        font-weight: 600;
+        color: var(--text-primary);
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .shift-pill .shift-time {
+        color: var(--text-secondary);
+        font-size: 10px;
+        margin-left: 4px;
+    }
+
+    /* Modern Modal Styling overrides */
+    #shiftModal .modal-content {
+        max-width: 400px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="content-header">
+    <div>
+        <h1>График работы</h1>
+        <p class="subtitle">Управление сменами сотрудников франшизы</p>
+    </div>
+</div>
+
+<div class="calendar-card fade-in">
+    <div class="calendar-header">
+        <h2 id="currentMonthYear" class="calendar-month-year">...</h2>
+        <div class="calendar-nav">
+            <button class="btn btn-secondary" style="padding: 8px;" onclick="changeMonth(-1)">
+                <span class="material-symbols-rounded">chevron_left</span>
+            </button>
+            <button class="btn btn-secondary" onclick="goToToday()">Сегодня</button>
+            <button class="btn btn-secondary" style="padding: 8px;" onclick="changeMonth(1)">
+                <span class="material-symbols-rounded">chevron_right</span>
+            </button>
+        </div>
+    </div>
+
+    <div class="calendar-grid" id="calendarHeader">
+        <div class="calendar-day-header">Понедельник</div>
+        <div class="calendar-day-header">Вторник</div>
+        <div class="calendar-day-header">Среда</div>
+        <div class="calendar-day-header">Четверг</div>
+        <div class="calendar-day-header">Пятница</div>
+        <div class="calendar-day-header">Суббота</div>
+        <div class="calendar-day-header" style="color: var(--danger);">Воскресенье</div>
+    </div>
+
+    <div class="calendar-grid" id="calendarBody">
+        <!-- Calendar days will be generated here by JS -->
+    </div>
+</div>
+
+{% if role in ['admin', 'manager'] %}
+<!-- Modal for Assigning Shift -->
+<div class="modal" id="shiftModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2 style="font-size: 20px; font-weight: 600;">Управление сменой</h2>
+            <button class="icon-btn" onclick="closeModal('shiftModal')">
+                <span class="material-symbols-rounded">close</span>
+            </button>
+        </div>
+        <div class="modal-body">
+            <input type="hidden" id="shiftDate">
+            <p id="shiftDateLabel" style="font-weight: 500; margin-bottom: 20px; color: var(--primary);"></p>
+
+            <div class="form-group">
+                <label class="form-label">Сотрудник</label>
+                <select class="form-input" id="shiftUser" style="width: 100%;">
+                    <option value="">Выберите сотрудника</option>
+                    {% for s in staff %}
+                    <option value="{{ s.id }}">{{ s.first_name }} {{ s.last_name or '' }} (@{{ s.username or
+                        'нет_юзернейма' }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <div class="form-group">
+                    <label class="form-label">Начало смены</label>
+                    <input type="text" class="form-input timepicker" id="shiftStart" placeholder="09:00">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Конец смены</label>
+                    <input type="text" class="form-input timepicker" id="shiftEnd" placeholder="21:00">
+                </div>
+            </div>
+            <p style="font-size: 12px; color: var(--text-tertiary); margin-bottom: 20px;">
+                * Оставьте время пустым, если используются стандартные часы работы франшизы.
+            </p>
+
+            <div id="existingShiftsList"
+                style="margin-bottom: 20px; border-top: 1px solid var(--border-color); padding-top: 16px; display: none;">
+                <h4 style="font-size: 13px; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px;">
+                    Существующие смены в этот день:</h4>
+                <div id="shiftsListContent" style="display: flex; flex-direction: column; gap: 8px;"></div>
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px;">
+                <button class="btn btn-secondary" onclick="closeModal('shiftModal')">Отмена</button>
+                <button class="btn btn-primary" onclick="saveShift()" id="saveShiftBtn">Назначить смену</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script>
+    let currentDate = new Date();
+    let shiftsData = [];
+    const isAdmin = {{ 'true' if role in ['admin', 'manager']else 'false' }};
+    const staffRef = {{ staff| tojson }};
+
+    document.addEventListener('DOMContentLoaded', () => {
+        flatpickr('.timepicker', {
+            enableTime: true,
+            noCalendar: true,
+            dateFormat: "H:i",
+            time_24hr: true
+        });
+
+        renderCalendar();
+    });
+
+    function changeMonth(delta) {
+        currentDate.setMonth(currentDate.getMonth() + delta);
+        renderCalendar();
+    }
+
+    function goToToday() {
+        currentDate = new Date();
+        renderCalendar();
+    }
+
+    async function loadShifts(year, month) {
+        // Fetch from 1st of month to 31st
+        const start = `${year}-${String(month + 1).padStart(2, '0')}-01`;
+        const end = new Date(year, month + 1, 0).toISOString().split('T')[0];
+
+        try {
+            const res = await fetch(`/api/shifts?start=${start}&end=${end}`);
+            const data = await res.json();
+            if (data.success) {
+                shiftsData = data.shifts || [];
+            }
+        } catch (e) {
+            console.error('Failed to load shifts:', e);
+            shiftsData = [];
+        }
+    }
+
+    async function renderCalendar() {
+        const year = currentDate.getFullYear();
+        const month = currentDate.getMonth();
+
+        const monthNames = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
+        document.getElementById('currentMonthYear').textContent = `${monthNames[month]} ${year}`;
+
+        await loadShifts(year, month);
+
+        const firstDay = new Date(year, month, 1).getDay(); // 0 is Sunday
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+        // Adjust so Monday is 0, Sunday is 6
+        let startDay = firstDay === 0 ? 6 : firstDay - 1;
+
+        const calendarBody = document.getElementById('calendarBody');
+        calendarBody.innerHTML = '';
+
+        const today = new Date();
+        const isCurrentMonth = today.getFullYear() === year && today.getMonth() === month;
+        const todayDate = today.getDate();
+
+        // Empty slots before 1st day
+        for (let i = 0; i < startDay; i++) {
+            const emptyDiv = document.createElement('div');
+            emptyDiv.className = 'calendar-day empty';
+            calendarBody.appendChild(emptyDiv);
+        }
+
+        // Days
+        for (let i = 1; i <= daysInMonth; i++) {
+            const dayDiv = document.createElement('div');
+            dayDiv.className = 'calendar-day';
+
+            if (isCurrentMonth && i === todayDate) {
+                dayDiv.classList.add('today');
+            }
+
+            const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
+            dayDiv.dataset.date = dateStr;
+
+            if (isAdmin) {
+                dayDiv.onclick = () => openShiftModal(dateStr, i, monthNames[month]);
+            }
+
+            dayDiv.innerHTML = `<div class="day-number">${i}</div>
+                                <div class="shifts-container" id="shifts-${dateStr}"></div>`;
+
+            calendarBody.appendChild(dayDiv);
+        }
+
+        // Fill shifts
+        shiftsData.forEach(shift => {
+            const container = document.getElementById(`shifts-${shift.date}`);
+            if (container) {
+                const s = document.createElement('div');
+                s.className = 'shift-pill';
+
+                let timeStr = '';
+                if (shift.start_time && shift.end_time) {
+                    timeStr = `<span class="shift-time">${shift.start_time.substring(0, 5)}-${shift.end_time.substring(0, 5)}</span>`;
+                }
+
+                // Colors based on role
+                let bg = 'rgba(74, 108, 247, 0.1)';
+                let color = 'var(--primary)';
+                if (shift.role === 'admin' || shift.role === 'manager') {
+                    bg = 'rgba(16, 185, 129, 0.1)';
+                    color = 'var(--success)';
+                }
+
+                s.style.background = bg;
+                s.style.borderColor = bg;
+                s.style.color = color;
+
+                s.innerHTML = `<span class="shift-name">${shift.first_name}</span>${timeStr}`;
+                container.appendChild(s);
+            }
+        });
+    }
+
+    // Modal logic
+    function openShiftModal(dateStr, dayNum, monthName) {
+        if (!isAdmin) return;
+        document.getElementById('shiftDate').value = dateStr;
+        document.getElementById('shiftDateLabel').textContent = `${dayNum} ${monthName}`;
+        document.getElementById('shiftUser').value = '';
+        document.getElementById('shiftStart').value = '';
+        document.getElementById('shiftEnd').value = '';
+
+        // Show existing shifts for this day to allow deletion
+        const existingShifts = shiftsData.filter(s => s.date === dateStr);
+        const listContainer = document.getElementById('existingShiftsList');
+        const listContent = document.getElementById('shiftsListContent');
+
+        if (existingShifts.length > 0) {
+            listContainer.style.display = 'block';
+            listContent.innerHTML = existingShifts.map(s => `
+                <div style="display: flex; justify-content: space-between; align-items: center; background: var(--bg-lighter); padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border-color);">
+                    <div style="font-size: 14px; font-weight: 500;">
+                        ${s.first_name} ${s.last_name || ''}
+                        <span style="font-size: 12px; color: var(--text-secondary); margin-left: 8px;">
+                            ${s.start_time ? s.start_time.substring(0, 5) + '-' + s.end_time.substring(0, 5) : 'Весь день'}
+                        </span>
+                    </div>
+                    <button class="icon-btn" style="color: var(--danger); width: 28px; height: 28px;" onclick="deleteShift(${s.id})" title="Удалить смену">
+                        <span class="material-symbols-rounded" style="font-size: 18px;">delete</span>
+                    </button>
+                </div>
+            `).join('');
+        } else {
+            listContainer.style.display = 'none';
+        }
+
+        document.getElementById('shiftModal').classList.add('active');
+    }
+
+    function closeModal(id) {
+        document.getElementById(id).classList.remove('active');
+    }
+
+    async function saveShift() {
+        const btn = document.getElementById('saveShiftBtn');
+        const user_id = document.getElementById('shiftUser').value;
+        const date = document.getElementById('shiftDate').value;
+        const start_time = document.getElementById('shiftStart').value;
+        const end_time = document.getElementById('shiftEnd').value;
+
+        if (!user_id) {
+            alert('Пожалуйста, выберите сотрудника');
+            return;
+        }
+
+        btn.disabled = true;
+        btn.innerHTML = '<span class="material-symbols-rounded" style="animation: spin 1s linear infinite;">sync</span> Сохранение...';
+
+        try {
+            const res = await fetch('/api/shifts/assign', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_id: Number(user_id), date, start_time, end_time })
+            });
+            const data = await res.json();
+
+            if (data.success) {
+                closeModal('shiftModal');
+                renderCalendar();
+            } else {
+                alert('Ошибка: ' + (data.error || 'Неизвестная ошибка'));
+            }
+        } catch (e) {
+            console.error(e);
+            alert('Ошибка сети при сохранении');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Назначить смену';
+        }
+    }
+
+    async function deleteShift(id) {
+        if (!confirm('Удалить эту смену?')) return;
+
+        try {
+            const res = await fetch(`/api/shifts/${id}`, { method: 'DELETE' });
+            const data = await res.json();
+            if (data.success) {
+                closeModal('shiftModal');
+                renderCalendar();
+            } else {
+                alert('Ошибка: ' + data.error);
+            }
+        } catch (e) {
+            console.error(e);
+            alert('Ошибка сети');
+        }
+    }
+</script>
+{% endblock %}

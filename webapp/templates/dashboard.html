@@ -145,84 +145,263 @@
 
         <div class="metric-card">
             <div class="metric-header">
-                <span class="metric-title">Сумма закупа (7 дней)</span>
+                <span class="metric-title">Ближайший закуп</span>
                 <div class="metric-icon warning">
-                    <span class="material-symbols-rounded">payments</span>
+                    <span class="material-symbols-rounded">shopping_cart_checkout</span>
                 </div>
             </div>
-            <div class="metric-value" id="metric-total-cost">
-                <div class="skeleton" style="width: 150px; height: 38px; border-radius: 4px;"></div>
+            <div class="metric-value" id="metric-next-purchase">
+                <div class="skeleton" style="width: 100px; height: 38px; border-radius: 4px;"></div>
             </div>
-            <div class="metric-footer">Ориентировочно</div>
+            <div class="metric-footer">Дни до дедлайна</div>
         </div>
 
         <div class="metric-card">
             <div class="metric-header">
-                <span class="metric-title">Критические товары</span>
-                <div class="metric-icon danger">
-                    <span class="material-symbols-rounded">warning</span>
+                <span class="metric-title">Капитализация склада</span>
+                <div class="metric-icon primary">
+                    <span class="material-symbols-rounded">account_balance</span>
                 </div>
             </div>
-            <div class="metric-value" id="metric-critical">
-                <div class="skeleton" style="width: 60px; height: 38px; border-radius: 4px;"></div>
+            <div class="metric-value" id="metric-stock-value">
+                <div class="skeleton" style="width: 150px; height: 38px; border-radius: 4px;"></div>
             </div>
-            <div class="metric-footer">Осталось на < 3 дней</div>
-            </div>
+            <div class="metric-footer">Заморожено в товаре</div>
         </div>
 
-        <!-- Quick Actions -->
-        <div class="dashboard-section">
-            <h2 class="section-title"><span class="material-symbols-rounded">bolt</span> Быстрые действия</h2>
-            <div style="display: flex; gap: 16px; flex-wrap: wrap;">
-                <button class="btn btn-primary" onclick="window.location.href='/stock_input'">
-                    <span class="material-symbols-rounded">edit_square</span> Ввести остатки
-                </button>
-                <button class="btn btn-secondary" onclick="window.location.href='/orders'">
-                    <span class="material-symbols-rounded">shopping_cart</span> Сделать заказ
-                </button>
+        <div class="metric-card">
+            <div class="metric-header">
+                <span class="metric-title">Товары в пути</span>
+                <div class="metric-icon success">
+                    <span class="material-symbols-rounded">local_shipping</span>
+                </div>
             </div>
+            <div class="metric-value" id="metric-pending-value">
+                <div class="skeleton" style="width: 150px; height: 38px; border-radius: 4px;"></div>
+            </div>
+            <div class="metric-footer">Сумма ожидаемых поставок</div>
         </div>
-
     </div>
-    {% endblock %}
 
-    {% block extra_js %}
-    <script>
-        document.addEventListener('DOMContentLoaded', async () => {
-            try {
-                await Promise.all([
-                    fetchStockStatus()
-                ]);
-                // Additional metrics logic will go here
-            } catch (e) {
-                console.error('Ошибка загрузки данных дашборда', e);
-            }
-        });
+    <div
+        style="display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 32px; margin-bottom: 32px;">
 
-        async function fetchStockStatus() {
-            try {
-                const res = await fetch('/api/stock/check');
-                const data = await res.json();
+        <!-- Activity Feed -->
+        <div class="dashboard-section" style="margin-bottom: 0;">
+            <h2 class="section-title"><span class="material-symbols-rounded">history</span> Лента активности</h2>
+            <div id="activity-feed" style="display: flex; flex-direction: column; gap: 16px;">
+                <div class="empty-state">
+                    <div class="skeleton" style="height: 60px; border-radius: 8px; margin-bottom: 12px;"></div>
+                    <div class="skeleton" style="height: 60px; border-radius: 8px; margin-bottom: 12px;"></div>
+                    <div class="skeleton" style="height: 60px; border-radius: 8px;"></div>
+                </div>
+            </div>
+        </div>
 
-                const vEl = document.getElementById('metric-stock-status');
-                const fEl = document.getElementById('metric-stock-footer');
+        <div style="display: flex; flex-direction: column; gap: 32px;">
+            <!-- Quick Actions -->
+            <div class="dashboard-section" style="margin-bottom: 0;">
+                <h2 class="section-title"><span class="material-symbols-rounded">bolt</span> Быстрые действия</h2>
+                <div style="display: flex; gap: 16px; flex-wrap: wrap;">
+                    <button class="btn btn-primary" onclick="window.location.href='/stock_input'">
+                        <span class="material-symbols-rounded">edit_square</span> Ввести остатки
+                    </button>
+                    <button class="btn btn-secondary" onclick="window.location.href='/orders'">
+                        <span class="material-symbols-rounded">shopping_cart</span> Сделать заказ
+                    </button>
+                </div>
+            </div>
 
-                if (data.exists) {
-                    vEl.innerHTML = '<span style="color: var(--secondary)">Сдано</span>';
-                    fEl.innerHTML = `За ${new Date(data.working_date).toLocaleDateString()}`;
-                } else {
-                    vEl.innerHTML = '<span style="color: var(--danger)">Ожидается</span>';
-                    fEl.innerHTML = `Ждем сводку за ${new Date(data.working_date).toLocaleDateString()}`;
-                }
+            <!-- Notes -->
+            <div class="dashboard-section" style="margin-bottom: 0;">
+                <h2 class="section-title"><span class="material-symbols-rounded">edit_note</span> Личные заметки</h2>
+                <textarea id="company-notes" class="form-control" rows="4"
+                    placeholder="Напишите сюда важные мысли, напоминания..."
+                    style="resize: vertical; margin-bottom: 12px;"></textarea>
+                <button class="btn btn-primary" onclick="saveNotes()" style="width: 100%;">
+                    Сохранить заметки
+                </button>
+            </div>
 
-                // Will fetch order sums from another endpoint or calculation soon
-                // For now keep loading state or placeholder that feels real
-                document.getElementById('metric-total-cost').textContent = 'В разработке';
-                document.getElementById('metric-critical').textContent = '...';
+            <!-- Broadcast -->
+            <div class="dashboard-section" style="margin-bottom: 0;">
+                <h2 class="section-title"><span class="material-symbols-rounded">campaign</span> Рупор</h2>
+                <p style="color: var(--text-secondary); font-size: 13px; margin-bottom: 12px;">Отправить объявление всем
+                    сотрудникам франшизы в Telegram</p>
+                <textarea id="broadcast-message" class="form-control" rows="3" placeholder="Внимание, завтра..."
+                    style="resize: vertical; margin-bottom: 12px;"></textarea>
+                <button class="btn btn-outline" onclick="sendBroadcast()"
+                    style="border-color: var(--danger); color: var(--danger); width: 100%;">
+                    Отправить всем
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
 
-            } catch (e) {
-                console.error(e);
-            }
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', async () => {
+        try {
+            await Promise.all([
+                fetchStockStatus(),
+                fetchDashboardMetrics(),
+                fetchActivityFeed()
+            ]);
+        } catch (e) {
+            console.error('Ошибка загрузки данных дашборда', e);
         }
-    </script>
-    {% endblock %}
+    });
+
+    async function fetchStockStatus() {
+        try {
+            const res = await fetch('/api/stock/check');
+            const data = await res.json();
+            const vEl = document.getElementById('metric-stock-status');
+            const fEl = document.getElementById('metric-stock-footer');
+            if (data.exists) {
+                vEl.innerHTML = '<span style="color: var(--secondary)">Сдано</span>';
+                fEl.innerHTML = `За ${new Date(data.working_date).toLocaleDateString()}`;
+            } else {
+                vEl.innerHTML = '<span style="color: var(--danger)">Ожидается</span>';
+                fEl.innerHTML = `Ждем сводку за ${new Date(data.working_date).toLocaleDateString()}`;
+            }
+        } catch (e) {
+            console.error(e);
+        }
+    }
+
+    function formatMoney(amount) {
+        return new Intl.NumberFormat('ru-RU').format(Math.round(amount)) + ' ₸';
+    }
+
+    async function fetchDashboardMetrics() {
+        try {
+            const res = await fetch('/api/dashboard/metrics');
+            const data = await res.json();
+            if (data.success) {
+                const npEl = document.getElementById('metric-next-purchase');
+                if (data.next_purchase_days !== null && data.next_purchase_days !== undefined) {
+                    npEl.textContent = `Через ${Math.round(data.next_purchase_days)} дн`;
+                } else {
+                    npEl.textContent = 'Ок';
+                }
+                document.getElementById('metric-stock-value').textContent = formatMoney(data.stock_value);
+                document.getElementById('metric-pending-value').textContent = formatMoney(data.pending_value);
+                document.getElementById('company-notes').value = data.notes || '';
+            }
+        } catch(e) {
+            console.error(e);
+        }
+    }
+
+    async function fetchActivityFeed() {
+        try {
+            const res = await fetch('/api/dashboard/activity?limit=6');
+            const data = await res.json();
+            const feedContainer = document.getElementById('activity-feed');
+            
+            if (data.success && data.activity && data.activity.length > 0) {
+                feedContainer.innerHTML = '';
+                data.activity.forEach(item => {
+                    const icon = item.type === 'supply' ? 'local_shipping' : (item.type === 'order' ? 'shopping_cart' : 'list_alt');
+                    const color = item.type === 'supply' ? 'var(--secondary)' : (item.type === 'order' ? 'var(--primary)' : 'var(--warning)');
+                    
+                    const el = document.createElement('div');
+                    el.style.display = 'flex';
+                    el.style.gap = '12px';
+                    el.style.alignItems = 'flex-start';
+                    el.style.padding = '12px';
+                    el.style.background = 'var(--bg-lighter)';
+                    el.style.borderRadius = 'var(--radius-md)';
+                    
+                    const dateObj = new Date(item.created_at);
+                    const timeStr = dateObj.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                    const dateStr = dateObj.toLocaleDateString();
+                    
+                    el.innerHTML = `
+                        <div style="background: ${color}20; color: ${color}; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                            <span class="material-symbols-rounded" style="font-size: 20px;">${icon}</span>
+                        </div>
+                        <div style="flex-grow: 1;">
+                            <div style="font-weight: 600; font-size: 14px; margin-bottom: 2px;">${item.title}</div>
+                            <div style="color: var(--text-secondary); font-size: 13px; margin-bottom: 4px;">${item.description}</div>
+                            <div style="color: var(--text-tertiary); font-size: 11px;">${dateStr} в ${timeStr}</div>
+                        </div>
+                    `;
+                    feedContainer.appendChild(el);
+                });
+            } else {
+                feedContainer.innerHTML = '<div class="empty-state">Нет недавних действий</div>';
+            }
+        } catch(e) {
+            console.error(e);
+        }
+    }
+
+    async function saveNotes() {
+        const notes = document.getElementById('company-notes').value;
+        const btn = document.querySelector('button[onclick="saveNotes()"]');
+        btn.textContent = 'Сохранение...';
+        btn.disabled = true;
+        try {
+            const res = await fetch('/api/company/notes', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({notes: notes})
+            });
+            const data = await res.json();
+            if (data.success) {
+                btn.textContent = 'Сохранено ✓';
+                setTimeout(() => { btn.textContent = 'Сохранить заметки'; btn.disabled = false; }, 2000);
+            } else {
+                alert('Ошибка: ' + data.error);
+                btn.textContent = 'Сохранить заметки';
+                btn.disabled = false;
+            }
+        } catch(e) {
+            alert('Ошибка при сохранении');
+            btn.textContent = 'Сохранить заметки';
+            btn.disabled = false;
+        }
+    }
+
+    async function sendBroadcast() {
+        const message = document.getElementById('broadcast-message').value;
+        if (!message) {
+            alert('Пожалуйста, введите текст объявления');
+            return;
+        }
+        
+        if (!confirm('Вы уверены, что хотите отправить это сообщение всем сотрудникам франшизы в Telegram?')) {
+            return;
+        }
+
+        const btn = document.querySelector('button[onclick="sendBroadcast()"]');
+        btn.textContent = 'Отправка...';
+        btn.disabled = true;
+
+        try {
+            const res = await fetch('/api/company/broadcast', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({message: message})
+            });
+            const data = await res.json();
+            
+            if (data.success) {
+                alert(`Объявление отправлено (${data.sent_count} чел.)`);
+                document.getElementById('broadcast-message').value = '';
+            } else {
+                alert('Ошибка: ' + (data.error || 'Неизвестная ошибка'));
+            }
+        } catch(e) {
+            alert('Ошибка при отправке: ' + e);
+        } finally {
+            btn.textContent = 'Отправить всем';
+            btn.disabled = false;
+        }
+    }
+</script>
+{% endblock %}

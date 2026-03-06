@@ -143,7 +143,36 @@ class DatabasePG:
                     quantity REAL NOT NULL,
                     weight REAL NOT NULL,
                     edited_quantity REAL,
+                    edited_quantity REAL,
                     edited_weight REAL
+                )
+            """)
+
+            # 10. Shifts (Employee Schedule)
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS shifts (
+                    id SERIAL PRIMARY KEY,
+                    company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+                    user_id BIGINT REFERENCES users(id) ON DELETE CASCADE,
+                    date DATE NOT NULL,
+                    start_time TIME,
+                    end_time TIME,
+                    status VARCHAR(50) DEFAULT 'assigned',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
+            # 10. Shifts (Employee Schedule)
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS shifts (
+                    id SERIAL PRIMARY KEY,
+                    company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+                    user_id BIGINT REFERENCES users(id) ON DELETE CASCADE,
+                    date DATE NOT NULL,
+                    start_time TIME,
+                    end_time TIME,
+                    status VARCHAR(50) DEFAULT 'assigned',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
 
@@ -358,6 +387,11 @@ class DatabasePG:
                 )
                 SELECT p.id as product_id,
                        p.name_internal,
+                       p.name_russian,
+                       p.price_per_box,
+                       p.unit,
+                       p.box_weight,
+                       p.units_per_box,
                        COALESCE(s_start.quantity, 0) as start_quantity,
                        COALESCE(s_end.quantity, 0) as end_quantity,
                        COALESCE(ps.total_boxes, 0) as supplied_quantity,
@@ -370,6 +404,7 @@ class DatabasePG:
                 WHERE p.company_id = $1 AND (s_start.quantity IS NOT NULL OR s_end.quantity IS NOT NULL OR ps.total_boxes IS NOT NULL)
             """, company_id, start_date, end_date)
             return [dict(row) for row in rows]
+
 
     async def get_stock_with_consumption(self, company_id: int) -> List[Dict]:
         """Получить текущие остатки и средний (МАКСИМАЛЬНЫЙ из 30/60/90) умный расход"""
@@ -780,6 +815,63 @@ class DatabasePG:
             """, company_id, product_id)
             return float(val) if val else 0.0
 
+    async def get_company_details(self, company_id: int) -> Optional[Dict]:
+        """Получить детальную информацию о компании, включая заметки (notes)"""
+        async with self.pool.acquire() as conn:
+            row = await conn.fetchrow("""
+                SELECT id, name, subscription_status, subscription_ends_at, notes, created_at
+                FROM companies
+                WHERE id = $1
+            """, company_id)
+            return dict(row) if row else None
+
+    async def update_company_notes(self, company_id: int, notes: str):
+        """Обновить личные заметки администратора франшизы"""
+        async with self.pool.acquire() as conn:
+            await conn.execute("""
+                UPDATE companies
+                SET notes = $1
+                WHERE id = $2
+            """, notes, company_id)
+
+    async def get_recent_activity(self, company_id: int, limit: int = 5) -> List[Dict]:
+        """Получить ленту последних событий (приемки, заявки, заказы)"""
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch("""
+                SELECT 
+                    'supply' as type,
+                    'Приемка товаров' as title,
+                    'Принято товаров на сумму ' || CAST(SUM(cost) AS text) || ' ₸' as description,
+                    MAX(created_at) as created_at
+                FROM supplies
+                WHERE company_id = $1
+                GROUP BY date
+
+                UNION ALL
+
+                SELECT 
+                    'submission' as type,
+                    'Заявка на остатки' as title,
+                    'Статус: ' || status as description,
+                    created_at
+                FROM pending_stock_submissions
+                WHERE company_id = $1
+
+                UNION ALL
+
+                SELECT 
+                    'order' as type,
+                    'Сформирован заказ' as title,
+                    'Сумма заказа: ' || CAST(total_cost AS text) || ' ₸' as description,
+                    created_at
+                FROM pending_orders
+                WHERE company_id = $1
+
+                ORDER BY created_at DESC
+                LIMIT $2
+            """, company_id, limit)
+            return [dict(row) for row in rows]
+
     async def get_all_companies(self) -> list:
         """Получить список всех компаний (для Super-Admin)"""
         async with self.pool.acquire() as conn:
@@ -871,4 +963,64 @@ class DatabasePG:
                 
                 # Сама компания
                 await conn.execute("DELETE FROM companies WHERE id = $1", company_id)
+
+    # ==========================
+    # Shift Schedule (Staff)
+    # ==========================
+    
+    async def get_shifts(self, company_id: int, start_date: str, end_date: str) -> list:
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch("""
+                SELECT s.id, s.user_id, s.date, s.start_time, s.end_time, s.status, s.company_id,
+                       u.first_name, u.last_name, u.role
+                FROM shifts s
+                JOIN users u ON s.user_id = u.id
+                WHERE s.company_id = $1 AND s.date >= $2 AND s.date <= $3
+                ORDER BY s.date, s.start_time
+            """, company_id, start_date, end_date)
+            return [dict(r) for r in rows]
+
+    async def assign_shift(self, company_id: int, user_id: int, date: str, start_time: str = None, end_time: str = None) -> int:
+        async with self.pool.acquire() as conn:
+            shift_id = await conn.fetchval("""
+                INSERT INTO shifts (company_id, user_id, date, start_time, end_time)
+                VALUES ($1, $2, $3, $4, $5)
+                RETURNING id
+            """, company_id, user_id, date, start_time, end_time)
+            return shift_id
+
+    async def delete_shift(self, company_id: int, shift_id: int) -> bool:
+        async with self.pool.acquire() as conn:
+            result = await conn.execute("DELETE FROM shifts WHERE id = $1 AND company_id = $2", shift_id, company_id)
+            return result.startswith("DELETE 1")
+
+    async def get_all_active_users(self) -> list:
+        """Fallback method for getting all active users if shift isn't used"""
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch("SELECT id FROM users WHERE is_active = TRUE")
+            return [row['id'] for row in rows]
+
+    async def get_active_users_for_reminder(self, company_id: int, date_str: str) -> list:
+        """
+        Возвращает список ID активных пользователей для напоминаний.
+        Если на этот день есть смены, возвращает только тех, у кого смена.
+        Если смен нет (расписание не ведется), возвращает всех активных сотрудников компании.
+        """
+        async with self.pool.acquire() as conn:
+            shifts_today = await conn.fetchval("""
+                SELECT COUNT(*) FROM shifts WHERE company_id = $1 AND date = $2
+            """, company_id, date_str)
             
+            if shifts_today > 0:
+                rows = await conn.fetch("""
+                    SELECT u.id 
+                    FROM users u
+                    JOIN shifts s ON u.id = s.user_id
+                    WHERE u.is_active = TRUE AND s.company_id = $1 AND s.date = $2
+                """, company_id, date_str)
+            else:
+                rows = await conn.fetch("""
+                    SELECT id FROM users WHERE is_active = TRUE AND company_id = $1
+                """, company_id)
+                
+            return [row['id'] for row in rows]

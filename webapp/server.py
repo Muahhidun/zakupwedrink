@@ -441,6 +441,61 @@ async def get_weekly_report_api(request):
         print(f"Ошибка API недельного отчета: {e}")
         return safe_json_response({'error': str(e)}, status=500)
 
+async def api_reports_advanced(request):
+    """API: Продвинутая аналитика за 30 дней (ABC, круговая диаграмма)"""
+    try:
+        company_id = await get_current_company(request)
+        end_date = get_working_date()
+        
+        date_obj = datetime.strptime(end_date, '%Y-%m-%d').date()
+        has_end_data = await db.has_stock_for_date(company_id, date_obj)
+        
+        actual_end_date = end_date
+        if not has_end_data:
+            latest = await db.get_latest_date_before(company_id, end_date)
+            if latest:
+                actual_end_date = str(latest)
+            else:
+                return safe_json_response({'consumption': []})
+                
+        actual_end_dt = datetime.strptime(actual_end_date, '%Y-%m-%d')
+        from datetime import timedelta
+        start_dt = actual_end_dt - timedelta(days=30)
+        start_date = start_dt.strftime('%Y-%m-%d')
+        
+        has_start_data = await db.has_stock_for_date(company_id, start_dt.date())
+        actual_start_date = start_date
+        if not has_start_data:
+            prev = await db.get_latest_date_before(company_id, start_date)
+            if prev: actual_start_date = str(prev)
+            
+        consumption = await db.calculate_consumption(company_id, actual_start_date, actual_end_date)
+        
+        results = []
+        for c in consumption:
+            weight = c.get('consumed_weight', 0)
+            if weight <= 0: continue
+            price = c.get('price_per_box', 0)
+            unit = c.get('unit', 'кг')
+            
+            if unit == 'шт':
+                divisor = c.get('units_per_box', 1) or 1
+            else:
+                divisor = c.get('box_weight', 1) or 1
+                
+            cost = (weight / divisor) * price
+            c['total_cost'] = cost
+            results.append(c)
+            
+        return safe_json_response({
+            'start_date': actual_start_date,
+            'end_date': actual_end_date,
+            'consumption': results
+        })
+    except Exception as e:
+        print(f"Ошибка Advanced Report: {e}")
+        return safe_json_response({'error': str(e)}, status=500)
+
 async def index(request):
     """Главная страница Mini App / Web App"""
     user = await get_current_user(request)
@@ -947,6 +1002,74 @@ async def api_reject_submission(request):
         print(f"Ошибка отклонения заявки через Web UI: {e}")
         return safe_json_response({'error': str(e)}, status=500)
 
+# ================================
+# Shift Schedule API
+# ================================
+
+async def api_get_shifts(request):
+    """API: Получить график смен"""
+    user = await get_current_user(request)
+    if not user: return safe_json_response({'error': 'Unauthorized'}, status=401)
+    company_id = await get_current_company(request)
+    try:
+        start_date = request.query.get('start')
+        end_date = request.query.get('end')
+        if not start_date or not end_date:
+            return safe_json_response({'error': 'start and end dates required'}, status=400)
+            
+        shifts = await db.get_shifts(company_id, start_date, end_date)
+        return safe_json_response({'success': True, 'shifts': shifts})
+    except Exception as e:
+        return safe_json_response({'error': str(e)}, status=500)
+
+async def api_assign_shift(request):
+    """API: Назначить смену сотруднику"""
+    user = await get_current_user(request)
+    if not user or user.get('role') not in ['admin', 'manager']:
+        return safe_json_response({'error': 'Forbidden'}, status=403)
+    company_id = await get_current_company(request)
+    try:
+        data = await request.json()
+        user_id = data.get('user_id')
+        date = data.get('date')
+        start_time = data.get('start_time')
+        end_time = data.get('end_time')
+        
+        if not user_id or not date:
+            return safe_json_response({'error': 'user_id and date required'}, status=400)
+            
+        shift_id = await db.assign_shift(company_id, user_id, date, start_time, end_time)
+        return safe_json_response({'success': True, 'shift_id': shift_id})
+    except Exception as e:
+        return safe_json_response({'error': str(e)}, status=500)
+
+async def api_delete_shift(request):
+    """API: Удалить смену"""
+    user = await get_current_user(request)
+    if not user or user.get('role') not in ['admin', 'manager']:
+        return safe_json_response({'error': 'Forbidden'}, status=403)
+    company_id = await get_current_company(request)
+    try:
+        shift_id = request.match_info.get('id')
+        if not shift_id:
+            return safe_json_response({'error': 'shift id required'}, status=400)
+        
+        success = await db.delete_shift(company_id, int(shift_id))
+        return safe_json_response({'success': success})
+    except Exception as e:
+        return safe_json_response({'error': str(e)}, status=500)
+
+async def schedule_page(request):
+    """Страница графика смен"""
+    user = await get_current_user(request)
+    company_id = await get_current_company(request)
+    staff = await db.get_users_by_company(company_id)
+    return render_template('schedule.html', request, {
+        'user': user, 
+        'role': user['role'] if user else None,
+        'staff': staff
+    })
+
 
 def create_app():
     """Создать приложение aiohttp"""
@@ -974,6 +1097,7 @@ def create_app():
     app.router.add_get('/reports', reports_page)
     app.router.add_get('/supply', supply_page)
     app.router.add_get('/order_edit', order_edit)
+    app.router.add_get('/schedule', schedule_page)
     
     # API endpoints
     app.router.add_get('/api/auth/telegram', telegram_login)
@@ -982,7 +1106,12 @@ def create_app():
     app.router.add_get('/api/history/{product_id}', get_history_api)
     app.router.add_get('/api/reports/daily', get_daily_report_api)
     app.router.add_get('/api/reports/weekly', get_weekly_report_api)
+    app.router.add_get('/api/reports/advanced', api_reports_advanced)
     app.router.add_post('/api/supply', save_supply)
+    
+    app.router.add_get('/api/shifts', api_get_shifts)
+    app.router.add_post('/api/shifts/assign', api_assign_shift)
+    app.router.add_delete('/api/shifts/{id}', api_delete_shift)
     
     app.router.add_get('/api/products', get_products)
     app.router.add_post('/api/products/{id}/toggle', toggle_product_status_route)
@@ -1007,6 +1136,10 @@ def create_app():
     app.router.add_get('/settings', settings_page)
     app.router.add_get('/api/company/details', api_get_company_details)
     app.router.add_post('/api/company/settings', api_update_company_settings)
+    app.router.add_post('/api/company/notes', api_update_company_notes)
+    app.router.add_post('/api/company/broadcast', api_company_broadcast)
+    app.router.add_get('/api/dashboard/metrics', api_get_dashboard_metrics)
+    app.router.add_get('/api/dashboard/activity', api_get_dashboard_activity)
 
     app.router.add_get('/api/submission/{id}', get_submission_data)
     app.router.add_post('/api/submission/update', update_submission)
@@ -1381,4 +1514,103 @@ async def api_update_company_settings(request):
             
     except Exception as e:
         print(f"Ошибка api_update_company_settings: {e}")
+        return safe_json_response({'error': str(e)}, status=500)
+
+async def api_get_dashboard_metrics(request):
+    """API: Получить метрики для дашборда (Stock Value, Pending Orders, Next Purchase)"""
+    user = await get_current_user(request)
+    if not user: return safe_json_response({'error': 'Unauthorized'}, status=401)
+    company_id = await get_current_company(request)
+    
+    try:
+        latest_stock = await db.get_latest_stock(company_id)
+        stock_value = 0.0
+        next_purchase_days = None
+        
+        for item in latest_stock:
+            price = item.get('price_per_box', 0)
+            if item.get('unit') == 'шт':
+                divisor = item.get('units_per_box', 1) or 1
+                qty = item.get('quantity', 0)
+                stock_value += (qty / divisor) * price
+            else:
+                divisor = item.get('box_weight', 1) or 1
+                weight = item.get('weight', 0)
+                stock_value += (weight / divisor) * price
+            
+            days_rem = item.get('days_remaining')
+            if isinstance(days_rem, (int, float)) and days_rem >= 0:
+                if next_purchase_days is None or days_rem < next_purchase_days:
+                    next_purchase_days = days_rem
+
+        pending_orders = await db.get_pending_orders(company_id)
+        pending_value = sum(o.get('total_cost', 0) for o in pending_orders if o.get('status') == 'pending')
+
+        details = await db.get_company_details(company_id)
+        notes = details.get('notes', '') if details else ''
+
+        return safe_json_response({
+            'success': True,
+            'stock_value': stock_value,
+            'pending_value': pending_value,
+            'next_purchase_days': next_purchase_days,
+            'notes': notes
+        })
+    except Exception as e:
+        print(f"Ошибка api_get_dashboard_metrics: {e}")
+        return safe_json_response({'error': str(e)}, status=500)
+
+async def api_get_dashboard_activity(request):
+    """API: Получить последние действия для дашборда"""
+    user = await get_current_user(request)
+    if not user: return safe_json_response({'error': 'Unauthorized'}, status=401)
+    company_id = await get_current_company(request)
+    try:
+        limit = int(request.query.get('limit', 5))
+        activity = await db.get_recent_activity(company_id, limit)
+        return safe_json_response({'success': True, 'activity': activity})
+    except Exception as e:
+        return safe_json_response({'error': str(e)}, status=500)
+
+async def api_update_company_notes(request):
+    """API: Обновить личные заметки франчайзи на Дашборде"""
+    user = await get_current_user(request)
+    if not user or user.get('role') not in ['admin', 'manager']:
+        return safe_json_response({'error': 'Forbidden'}, status=403)
+    company_id = await get_current_company(request)
+    try:
+        data = await request.json()
+        await db.update_company_notes(company_id, data.get('notes', ''))
+        return safe_json_response({'success': True})
+    except Exception as e:
+        return safe_json_response({'error': str(e)}, status=500)
+
+async def api_company_broadcast(request):
+    """API: Отправить объявление всем сотрудникам франшизы в Telegram"""
+    user = await get_current_user(request)
+    if not user or user.get('role') not in ['admin', 'manager']:
+        return safe_json_response({'error': 'Forbidden'}, status=403)
+    company_id = await get_current_company(request)
+    try:
+        data = await request.json()
+        message = data.get('message')
+        if not message:
+            return safe_json_response({'error': 'Empty message'}, status=400)
+            
+        users = await db.get_users_by_company(company_id)
+        bot = get_bot_instance()
+        count = 0
+        if bot:
+            for u in users:
+                if u.get('is_active'):
+                    try:
+                        await bot.send_message(
+                            chat_id=u['id'], 
+                            text=f"📢 <b>Объявление от администратора</b>\n\n{message}"
+                        )
+                        count += 1
+                    except Exception:
+                        pass
+        return safe_json_response({'success': True, 'sent_count': count})
+    except Exception as e:
         return safe_json_response({'error': str(e)}, status=500)
