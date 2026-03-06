@@ -234,8 +234,8 @@
 <script>
     let currentDate = new Date();
     let shiftsData = [];
-    const isAdmin = {{ 'true' if role in ['admin', 'manager']else 'false' }};
-    const staffRef = {{ staff| tojson }};
+    const isAdmin = {{ 'true' if role in ['admin', 'manager'] else 'false' }};
+    const staffRef = {{ staff | tojson | safe }};
 
     document.addEventListener('DOMContentLoaded', () => {
         flatpickr('.timepicker', {
