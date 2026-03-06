@@ -358,6 +358,16 @@ async def get_daily_report_api(request):
         company_id = await get_current_company(request)
         date_str = request.query.get('date', get_working_date())
         
+        date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
+        has_data = await db.has_stock_for_date(company_id, date_obj)
+        
+        if not has_data:
+            return safe_json_response({
+                'date': date_str,
+                'consumption': [],
+                'total_supply_cost': await db.get_supply_total(company_id, date_str)
+            })
+            
         prev_date = await db.get_latest_date_before(company_id, date_str)
         
         if not prev_date:
@@ -386,17 +396,44 @@ async def get_weekly_report_api(request):
     try:
         company_id = await get_current_company(request)
         end_date = get_working_date()
+        
+        # If no data for end_date, find the most recent day with data
+        date_obj = datetime.strptime(end_date, '%Y-%m-%d').date()
+        has_end_data = await db.has_stock_for_date(company_id, date_obj)
+        
+        actual_end_date = end_date
+        if not has_end_data:
+            latest_date_str = await db.get_latest_date_before(company_id, end_date)
+            if latest_date_str:
+                actual_end_date = str(latest_date_str)
+            else:
+                # No data at all in DB
+                return safe_json_response({
+                    'start_date': end_date,
+                    'end_date': end_date,
+                    'consumption': [],
+                    'total_supply_cost': 0
+                })
+
         from datetime import timedelta
-        end_dt = datetime.strptime(end_date, '%Y-%m-%d')
-        start_dt = end_dt - timedelta(days=7)
+        actual_end_dt = datetime.strptime(actual_end_date, '%Y-%m-%d')
+        start_dt = actual_end_dt - timedelta(days=7)
         start_date = start_dt.strftime('%Y-%m-%d')
         
-        consumption = await db.calculate_consumption(company_id, start_date, end_date)
-        total_supply_cost = await db.get_supply_total_period(company_id, start_date, end_date)
+        # Check if we have data on start_date, if not find nearest before
+        has_start_data = await db.has_stock_for_date(company_id, start_dt.date())
+        actual_start_date = start_date
+        if not has_start_data:
+            prev_start = await db.get_latest_date_before(company_id, start_date)
+            if prev_start:
+                actual_start_date = str(prev_start)
+
+        consumption = await db.calculate_consumption(company_id, actual_start_date, actual_end_date)
+        total_supply_cost = await db.get_supply_total_period(company_id, actual_start_date, actual_end_date)
                 
         return safe_json_response({
-            'start_date': start_date,
-            'end_date': end_date,
+            'start_date': actual_start_date,
+            'end_date': actual_end_date,
             'consumption': consumption,
             'total_supply_cost': total_supply_cost
         })
