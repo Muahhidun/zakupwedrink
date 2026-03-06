@@ -1064,7 +1064,7 @@ async def schedule_page(request):
     user = await get_current_user(request)
     company_id = await get_current_company(request)
     staff = await db.get_users_by_company(company_id)
-    return render_template('schedule.html', request, {
+    return aiohttp_jinja2.render_template('schedule.html', request, {
         'user': user, 
         'role': user['role'] if user else None,
         'staff': staff
@@ -1528,14 +1528,20 @@ async def api_get_dashboard_metrics(request):
         next_purchase_days = None
         
         for item in latest_stock:
-            price = item.get('price_per_box', 0)
+            price = item.get('price_per_box')
+            if price is None: price = 0
+            
             if item.get('unit') == 'шт':
-                divisor = item.get('units_per_box', 1) or 1
-                qty = item.get('quantity', 0)
+                divisor = item.get('units_per_box')
+                if not divisor: divisor = 1
+                qty = item.get('quantity')
+                if qty is None: qty = 0
                 stock_value += (qty / divisor) * price
             else:
-                divisor = item.get('box_weight', 1) or 1
-                weight = item.get('weight', 0)
+                divisor = item.get('box_weight')
+                if not divisor: divisor = 1
+                weight = item.get('weight')
+                if weight is None: weight = 0
                 stock_value += (weight / divisor) * price
             
             days_rem = item.get('days_remaining')
