@@ -825,11 +825,31 @@ class DatabasePG:
         """Получить детальную информацию о компании, включая заметки (notes)"""
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow("""
-                SELECT id, name, subscription_status, subscription_ends_at, notes, created_at
+                SELECT id, name, subscription_status, subscription_ends_at, notes, created_at,
+                       default_shift_start, default_shift_end
                 FROM companies
                 WHERE id = $1
             """, company_id)
             return dict(row) if row else None
+
+    async def update_company_details(self, company_id: int, name: str, default_shift_start: str = None, default_shift_end: str = None) -> bool:
+        """Обновить название компании и стандартные часы смены"""
+        from datetime import datetime
+        start_time = None
+        if isinstance(default_shift_start, str) and default_shift_start:
+            start_time = datetime.strptime(default_shift_start, '%H:%M').time()
+            
+        end_time = None
+        if isinstance(default_shift_end, str) and default_shift_end:
+            end_time = datetime.strptime(default_shift_end, '%H:%M').time()
+            
+        async with self.pool.acquire() as conn:
+            result = await conn.execute("""
+                UPDATE companies
+                SET name = $1, default_shift_start = $2, default_shift_end = $3
+                WHERE id = $4
+            """, name, start_time, end_time, company_id)
+            return result.startswith("UPDATE 1")
 
     async def update_company_notes(self, company_id: int, notes: str):
         """Обновить личные заметки администратора франшизы"""
@@ -978,7 +998,7 @@ class DatabasePG:
         async with self.pool.acquire() as conn:
             rows = await conn.fetch("""
                 SELECT s.id, s.user_id, s.date, s.start_time, s.end_time, s.status, s.company_id,
-                       u.first_name, u.last_name, u.role
+                       u.first_name, u.last_name, u.real_name, u.role
                 FROM shifts s
                 JOIN users u ON s.user_id = u.id
                 WHERE s.company_id = $1 AND s.date >= $2 AND s.date <= $3

@@ -272,7 +272,7 @@
 <script>
     let currentDate = new Date();
     let shiftsData = [];
-    const isAdmin = {{ 'true' if role in ['admin', 'manager'] else 'false' }};
+    const isAdmin = {{ 'true' if role in ['admin', 'manager']else 'false' }};
     const staffRef = {{ staff | tojson | safe }};
 
     document.addEventListener('DOMContentLoaded', () => {
@@ -398,7 +398,8 @@
                 s.style.borderColor = bg;
                 s.style.color = color;
 
-                s.innerHTML = `<span class="shift-name">${shift.first_name}</span>${timeStr}`;
+                let nameToDisplay = shift.real_name || shift.first_name;
+                s.innerHTML = `<span class="shift-name">${nameToDisplay}</span>${timeStr}`;
                 container.appendChild(s);
             }
         });
@@ -409,10 +410,10 @@
         if (!isAdmin) return;
         document.getElementById('shiftDate').value = dateStr;
         document.getElementById('shiftDateLabel').textContent = `${dayNum} ${monthName}`;
-        
+
         document.querySelectorAll('.shift-user-checkbox').forEach(cb => cb.checked = false);
-        document.getElementById('shiftStart').value = '';
-        document.getElementById('shiftEnd').value = '';
+        document.getElementById('shiftStart').value = '{{ default_shift_start }}';
+        document.getElementById('shiftEnd').value = '{{ default_shift_end }}';
 
         // Show existing shifts for this day to allow deletion
         const existingShifts = shiftsData.filter(s => s.date === dateStr);
@@ -424,7 +425,7 @@
             listContent.innerHTML = existingShifts.map(s => `
                 <div style="display: flex; justify-content: space-between; align-items: center; background: var(--bg-lighter); padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border-color);">
                     <div style="font-size: 14px; font-weight: 500;">
-                        ${s.first_name} ${s.last_name || ''}
+                        ${s.real_name || s.first_name} ${s.last_name || ''}
                         <span style="font-size: 12px; color: var(--text-secondary); margin-left: 8px;">
                             ${s.start_time ? s.start_time.substring(0, 5) + '-' + s.end_time.substring(0, 5) : 'Весь день'}
                         </span>

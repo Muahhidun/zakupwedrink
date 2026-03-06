@@ -1080,11 +1080,16 @@ async def schedule_page(request):
         if d_copy.get('created_at'): d_copy['created_at'] = d_copy['created_at'].isoformat()
         if d_copy.get('last_seen'): d_copy['last_seen'] = d_copy['last_seen'].isoformat()
         staff_json_ready.append(d_copy)
+    company_details = await db.get_company_details(company_id)
+    default_start = company_details.get('default_shift_start') if company_details else None
+    default_end = company_details.get('default_shift_end') if company_details else None
         
     return aiohttp_jinja2.render_template('schedule.html', request, {
         'user': user, 
         'role': user['role'] if user else None,
-        'staff': staff_json_ready
+        'staff': staff_json_ready,
+        'default_shift_start': str(default_start)[:5] if default_start else '',
+        'default_shift_end': str(default_end)[:5] if default_end else ''
     })
 
 
@@ -1518,11 +1523,13 @@ async def api_update_company_settings(request):
     try:
         data = await request.json()
         new_name = data.get('name')
+        default_shift_start = data.get('default_shift_start')
+        default_shift_end = data.get('default_shift_end')
         
         if not new_name or not new_name.strip():
             return safe_json_response({'error': 'Название не может быть пустым'}, status=400)
             
-        success = await db.update_company_details(company_id, new_name.strip())
+        success = await db.update_company_details(company_id, new_name.strip(), default_shift_start, default_shift_end)
         
         if success:
             return safe_json_response({'success': True, 'message': 'Настройки успешно сохранены'})
