@@ -27,22 +27,24 @@ class OrderStates(StatesGroup):
     waiting_for_manual_order_boxes = State()
 
 
-async def prepare_order_data(db, company_id=1):
+async def prepare_order_data(db, company_id=1, lookback_days: int = 30):
     """Подготовить данные для формирования заказа с учетом товаров в пути"""
     stock = await db.get_latest_stock(company_id) if hasattr(db, 'pool') else await db.get_latest_stock()
     enriched_stock = []
 
     for item in stock:
-        # Получаем историю остатков за последние 30 дней для стабильного среднего
-        history_days = 30
+        # Получаем историю остатков за последние `lookback_days` дней для стабильного среднего
         if hasattr(db, 'pool'):
-            history = await db.get_stock_history(company_id, item['product_id'], days=history_days)
-            supplies = await db.get_supply_history(company_id, item['product_id'], days=history_days)
+            history = await db.get_stock_history(company_id, item['product_id'], days=lookback_days)
+            supplies = await db.get_supply_history(company_id, item['product_id'], days=lookback_days)
             pending_weight = await db.get_pending_weight_for_product(company_id, item['product_id'])
         else:
-            history = await db.get_stock_history(item['product_id'], days=history_days)
-            supplies = await db.get_supply_history(item['product_id'], days=history_days)
+            history = await db.get_stock_history(item['product_id'], days=lookback_days)
+            supplies = await db.get_supply_history(item['product_id'], days=lookback_days)
             pending_weight = await db.get_pending_weight_for_product(item['product_id'])
+
+        # Рассчитываем средний расход с учетом поставок
+        avg_consumption, days_with_data, warning = calculate_average_consumption(history, supplies)
 
         enriched_stock.append({
             **item,

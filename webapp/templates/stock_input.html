@@ -496,6 +496,8 @@
         }
     }
 
+
+
     async function saveStock() {
         const btn = document.getElementById('saveBtn');
         btn.disabled = true;
@@ -561,7 +563,7 @@
                 stock: stockData
             } : {
                 date: workingDate,
-                stock: stockData,
+                stock: stockData.filter(item => item.product_id !== undefined),
                 user_id: currentUser.id
             };
 
@@ -591,7 +593,9 @@
                 });
 
                 setTimeout(() => {
-                    if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initDataUnsafe && window.Telegram.WebApp.initDataUnsafe.user) {
+                    if (editSubmissionId) {
+                        window.location.href = '/submissions';
+                    } else if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initDataUnsafe && window.Telegram.WebApp.initDataUnsafe.user) {
                         window.Telegram.WebApp.close();
                     } else if (currentUser.role === 'admin' || currentUser.role === 'manager') {
                         if (editSubmissionId) {

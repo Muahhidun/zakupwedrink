@@ -590,8 +590,13 @@ async def save_stock(request):
         stock_items = data.get('stock', [])
         user_id = data.get('user_id')
 
-        if not user_id or user_id == 'unknown':
+        if not user_id or str(user_id) == 'unknown':
             return safe_json_response({'error': 'User ID required'}, status=400)
+            
+        try:
+            user_id = int(user_id)
+        except ValueError:
+            return safe_json_response({'error': 'Invalid User ID format'}, status=400)
 
         working_date_str = get_working_date()
         date_obj = datetime.strptime(working_date_str, '%Y-%m-%d').date()
@@ -937,7 +942,8 @@ async def api_approve_submission(request):
     try:
         company_id = await get_current_company(request)
         user = await get_current_user(request)
-        
+        if not user or user['role'] not in ['admin', 'manager']:
+             return safe_json_response({'error': 'Unauthorized'}, status=403)
         data = await request.json()
         submission_id = data.get('submission_id')
         
@@ -951,7 +957,7 @@ async def api_approve_submission(request):
              
         await db.approve_submission(submission_id, user['id'])
         
-        # Опционально: отправить уведомление в Telegram сотруднику (как было в moderation.py)
+        # Опционально: отправить уведомление в Telegram сотруднику
         bot = get_bot_instance()
         if bot:
              try:
@@ -974,7 +980,8 @@ async def api_reject_submission(request):
     try:
         company_id = await get_current_company(request)
         user = await get_current_user(request)
-        
+        if not user or user['role'] not in ['admin', 'manager']:
+             return safe_json_response({'error': 'Unauthorized'}, status=403)
         data = await request.json()
         submission_id = data.get('submission_id')
         reason = data.get('reason', 'Отвергнуто администратором без объяснения причин')
@@ -1003,6 +1010,48 @@ async def api_reject_submission(request):
         return safe_json_response({'success': True, 'message': 'Заявка отклонена'})
     except Exception as e:
         print(f"Ошибка отклонения заявки через Web UI: {e}")
+        return safe_json_response({'error': str(e)}, status=500)
+
+async def send_order_telegram_api(request):
+    """API: Отправить сгенерированный список закупа в Telegram"""
+    try:
+        user = await get_current_user(request)
+        if not user:
+             return safe_json_response({'error': 'Unauthorized'}, status=403)
+             
+        data = await request.json()
+        days = data.get('days')
+        total_cost = data.get('total_cost')
+        items = data.get('items', [])
+        
+        bot = get_bot_instance()
+        if not bot:
+             return safe_json_response({'error': 'Бот не инициализирован. Уведомление не отправлено.'}, status=500)
+             
+        # Формируем официальное сообщение для поставщика
+        message_lines = [
+            f"<b>Заявка на поставку (на {days} дней)</b>\n"
+        ]
+        
+        for item in items:
+            name = item.get('name')
+            boxes = item.get('order_boxes')
+            
+            if boxes > 0:
+                message_lines.append(f"- {name}: {boxes} уп.")
+                
+        message = "\n".join(message_lines)
+        
+        await bot.send_message(
+            chat_id=user['id'],
+            text=message,
+            parse_mode="HTML"
+        )
+        
+        return safe_json_response({'success': True, 'message': 'Список закупа успешно отправлен в ваш Telegram'})
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
         return safe_json_response({'error': str(e)}, status=500)
 
 # ================================
@@ -1093,6 +1142,50 @@ async def schedule_page(request):
     })
 
 
+async def send_order_telegram_api(request):
+    """API: Отправить сгенерированный список закупа в Telegram"""
+    try:
+        user = await get_current_user(request)
+        if not user:
+             return safe_json_response({'error': 'Unauthorized'}, status=403)
+             
+        data = await request.json()
+        days = data.get('days')
+        total_cost = data.get('total_cost')
+        items = data.get('items', [])
+        
+        bot = get_bot_instance()
+        if not bot:
+             return safe_json_response({'error': 'Бот не инициализирован. Уведомление не отправлено.'}, status=500)
+             
+        # Формируем официальное сообщение для поставщика
+        message_lines = [
+            f"<b>Заявка на поставку (на {days} дней)</b>\n"
+        ]
+        
+        for item in items:
+            name = item.get('name')
+            boxes = item.get('order_boxes')
+            
+            if boxes > 0:
+                message_lines.append(f"- {name}: {boxes} уп.")
+                
+        message = "\n".join(message_lines)
+        
+        await bot.send_message(
+            chat_id=user['id'],
+            text=message,
+            parse_mode="HTML"
+        )
+        
+        return safe_json_response({'success': True, 'message': 'Список закупа успешно отправлен в ваш Telegram'})
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return safe_json_response({'error': str(e)}, status=500)
+
+
+
 def create_app():
     """Создать приложение aiohttp"""
     app = web.Application()
@@ -1171,6 +1264,7 @@ def create_app():
 
     app.router.add_post('/api/draft_order', save_draft_order)
     app.router.add_get('/api/draft_order/{draft_key}', get_draft_order)
+    app.router.add_post('/api/orders/send_telegram', send_order_telegram_api)
 
     for route in list(app.router.routes()):
         cors.add(route)
@@ -1198,7 +1292,7 @@ def create_app():
         max_age=86400 * 30,
         httponly=True,
         secure=True,
-        samesite='Lax'
+        samesite='None'
     )
     aiohttp_session.setup(app, storage)
 

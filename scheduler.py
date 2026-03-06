@@ -17,17 +17,17 @@ async def send_auto_purchase_order(bot: Bot):
     Автоматически рассчитать и отправить заказ на закуп (если сумма >= 500,000₸)
     Отправляется в 12:00 по Астане
     """
-    try:
+        from database import Database
         from database_pg import DatabasePG
         from utils.calculations import get_auto_order_with_threshold, format_auto_order_list
         from handlers.orders import prepare_order_data
 
         database_url = os.getenv('DATABASE_URL')
-        if not database_url:
-            logger.warning("⚠️ DATABASE_URL не установлен")
-            return
-
-        db = DatabasePG(database_url)
+        if database_url:
+            db = DatabasePG(database_url)
+        else:
+            db = Database("wedrink.db")
+            
         await db.init_db()
 
         logger.info("🔍 Рассчитываю автоматический заказ на 14 дней...")
@@ -92,13 +92,15 @@ async def check_and_send_reminder(bot: Bot, group_chat_id: str, reminder_type: s
         reminder_type: Тип напоминания (morning, afternoon, evening, final)
     """
     try:
+        from database import Database
         from database_pg import DatabasePG
+
         database_url = os.getenv('DATABASE_URL')
         if database_url:
             db = DatabasePG(database_url)
         else:
-            from database import Database
             db = Database("wedrink.db")
+            
         await db.init_db()
 
         # Проверяем были ли введены остатки сегодня

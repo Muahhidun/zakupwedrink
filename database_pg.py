@@ -648,6 +648,21 @@ class DatabasePG:
             """, company_id)
             return [dict(row) for row in rows]
 
+    async def get_all_submissions(self, company_id: int) -> List[Dict]:
+        """Получить все заявки (для web-панели)"""
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch("""
+                SELECT ps.*, u.username, u.first_name, u.last_name, u.real_name,
+                       COUNT(psi.id) as items_count
+                FROM pending_stock_submissions ps
+                JOIN users u ON ps.submitted_by = u.id
+                LEFT JOIN pending_stock_items psi ON ps.id = psi.submission_id
+                WHERE ps.company_id = $1
+                GROUP BY ps.id, u.username, u.first_name, u.last_name, u.real_name
+                ORDER BY ps.created_at DESC
+            """, company_id)
+            return [dict(row) for row in rows]
+
     async def get_submission_by_id(self, company_id: int, submission_id: int) -> Dict:
         """Получить заявку"""
         async with self.pool.acquire() as conn:

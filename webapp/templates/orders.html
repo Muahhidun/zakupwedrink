@@ -75,6 +75,13 @@
 
         <div
             style="padding: 24px; background: var(--bg-surface-hover); border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 12px;">
+            <button class="btn" style="background: var(--info); color: white; border: none; display: flex; align-items: center; gap: 6px;" onclick="sendToTelegram()">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="22" y1="2" x2="11" y2="13"></line>
+                    <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                </svg>
+                Отправить в Telegram
+            </button>
             <button class="btn btn-success" onclick="approveOrder()">
                 <span class="material-symbols-rounded">check</span> Утвердить заказ
             </button>
@@ -85,6 +92,8 @@
 
 {% block extra_js %}
 <script>
+    let currentOrderData = null;
+
     async function generateOrder(days) {
         if (!days || days < 1) {
             showToast('Введите корректное количество дней', 'warning');
@@ -114,6 +123,7 @@
                 throw new Error(errorData.error || 'Network error');
             }
             const data = await res.json();
+            currentOrderData = data;
 
             document.getElementById('orderTitle').textContent = `Автоматический смарт план на ${days} дней`;
             orderMeta.innerHTML = `<span class="material-symbols-rounded" style="font-size:16px;vertical-align:middle;margin-right:4px;color:var(--primary);">smart_toy</span> <span style="vertical-align:middle;">Система автоматически выбрала наилучший сценарий расхода из статистики за 30, 60 и 90 дней для обеспечения безопасности остатков</span>`;
@@ -160,6 +170,30 @@
                     </div>
                 </td></tr>
             `;
+        }
+    }
+
+    async function sendToTelegram() {
+        if (!currentOrderData || !currentOrderData.items || currentOrderData.items.length === 0) {
+            showToast('Нет рассчитанных данных для отправки', 'warning');
+            return;
+        }
+
+        try {
+            showToast('Отправка в Telegram...', 'info');
+            const res = await fetch('/api/orders/send_telegram', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(currentOrderData)
+            });
+            
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Произошла ошибка при отправке');
+            
+            showToast(data.message || 'Готово! Проверьте бота в Telegram!', 'success');
+        } catch (e) {
+            console.error(e);
+            showToast('Ошибка при отправке: ' + e.message, 'danger');
         }
     }
 

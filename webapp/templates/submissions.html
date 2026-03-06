@@ -11,11 +11,13 @@
         margin: 0 auto;
     }
 
-    .page-header {
+    .submissions-header {
         display: flex;
-        justify-content: flex-end;
+        justify-content: space-between;
         align-items: center;
-        margin-bottom: 24px;
+        margin-bottom: var(--spacing-lg);
+        flex-wrap: wrap;
+        gap: 16px;
     }
 
     .status-badge {
@@ -45,6 +47,7 @@
     .actions-cell {
         display: flex;
         gap: 8px;
+        justify-content: flex-end;
     }
 
     .btn-icon {
@@ -148,16 +151,33 @@
         justify-content: flex-end;
         gap: 12px;
     }
+
+    .author-circle {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        background: var(--primary-light);
+        color: var(--primary);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 13px;
+        font-weight: 600;
+        flex-shrink: 0;
+    }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="submissions-container">
-    <div class="page-header">
-        <button class="btn btn-primary" onclick="loadSubmissions()">
-            <span class="material-symbols-rounded">refresh</span>
-            Обновить
-        </button>
+    <div class="submissions-header">
+        <h2 class="section-title">Заявки на остатки</h2>
+        <div style="display: flex; gap: 12px;">
+            <button class="btn btn-primary" onclick="loadSubmissions()">
+                <span class="material-symbols-rounded">refresh</span>
+                Обновить
+            </button>
+        </div>
     </div>
 
     <div class="card" style="padding: 0; overflow: hidden;">
@@ -166,21 +186,25 @@
                 <thead>
                     <tr>
                         <th style="width: 80px;">ID</th>
-                        <th style="width: 140px;">Дата остатков</th>
-                        <th style="width: 25%;">Создал</th>
-                        <th style="width: 140px;">Статус</th>
-                        <th style="color: var(--text-secondary);">Отправлено</th>
-                        <th style="text-align: right; width: 150px;">Действия</th>
+                        <th>Дата остатков</th>
+                        <th>Создал</th>
+                        <th>Статус</th>
+                        <th>Отправлено</th>
+                        <th style="text-align: right;">Действия</th>
                     </tr>
                 </thead>
                 <tbody id="submissionsTableBody">
                     <tr>
-                        <td colspan="6" style="text-align: center; padding: 32px;">Загрузка данных...</td>
+                        <td colspan="6" style="text-align: center; padding: 32px;"><span
+                                class="material-symbols-rounded"
+                                style="animation: spin 1s linear infinite; vertical-align: middle;">sync</span> Загрузка
+                            данных...</td>
                     </tr>
                 </tbody>
             </table>
         </div>
     </div>
+</div>
 </div>
 
 <!-- Reject Modal -->
@@ -207,12 +231,11 @@
 
     async function loadSubmissions() {
         const tbody = document.getElementById('submissionsTableBody');
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 32px;"><span class="material-symbols-rounded" style="animation: spin 1s linear infinite;">sync</span> Загрузка...</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 32px;"><span class="material-symbols-rounded" style="animation: spin 1s linear infinite; vertical-align: middle;">sync</span> Загрузка...</td></tr>';
 
         try {
             const res = await fetch('/api/submissions');
             if (!res.ok) throw new Error('Ошибка сети');
-
             const data = await res.json();
             submissions = data.submissions || [];
             renderTable();
@@ -247,7 +270,6 @@
 
             // Форматируем даты
             const subDate = new Date(sub.submission_date).toLocaleDateString('ru-RU');
-
             let createdAt = '';
             if (sub.created_at) {
                 const cDate = new Date(sub.created_at);
@@ -258,11 +280,11 @@
             let actionsObj = '';
             if (sub.status === 'pending') {
                 actionsObj = `
-                    <div class="actions-cell" style="justify-content: flex-end;">
+                    <div class="actions-cell">
                         <button class="btn-icon btn-approve" onclick="approveSubmission(${sub.id})" title="Утвердить">
                             <span class="material-symbols-rounded">check</span>
                         </button>
-                        <a href="/submission_edit?id=${sub.id}" class="btn-icon btn-edit" title="Проверить/Редактировать">
+                        <a href="/stock_input?edit_submission_id=${sub.id}" class="btn-icon btn-edit" title="Проверить/Редактировать">
                             <span class="material-symbols-rounded">edit</span>
                         </a>
                         <button class="btn-icon btn-reject" onclick="openRejectModal(${sub.id})" title="Отклонить">
@@ -272,24 +294,23 @@
                 `;
             } else {
                 actionsObj = `
-                    <div class="actions-cell" style="justify-content: flex-end;">
-                        <a href="/submission_edit?id=${sub.id}" class="btn-icon btn-edit" title="Просмотр" style="opacity: 0.5;">
+                    <div class="actions-cell">
+                        <a href="/stock_input?submission_id=${sub.id}" class="btn-icon btn-edit" title="Просмотр" style="opacity: 0.5;">
                             <span class="material-symbols-rounded">visibility</span>
                         </a>
                     </div>
                 `;
             }
 
-            const authorName = `${sub.first_name || ''} ${sub.last_name || ''}`.trim() || 'Неизвестно';
+            const authorName = `${sub.first_name || ''} ${sub.last_name || ''}`.trim() || sub.username || 'Неизвестно';
+            const initials = authorName.charAt(0).toUpperCase();
 
             tr.innerHTML = `
                 <td style="font-weight: 600; color: var(--text-secondary);">#${sub.id}</td>
                 <td style="font-weight: 500;">${subDate}</td>
                 <td>
                     <div style="display: flex; align-items: center; gap: 8px;">
-                        <div style="width: 24px; height: 24px; border-radius: 50%; background: var(--border-color); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; color: var(--text-secondary);">
-                            ${authorName.charAt(0).toUpperCase()}
-                        </div>
+                        <div class="author-circle">${initials}</div>
                         ${authorName}
                     </div>
                 </td>
@@ -371,6 +392,12 @@
         } finally {
             btn.textContent = origText;
             btn.disabled = false;
+        }
+    });
+    // Изменение клика на оверлей для закрытия модалки
+    document.getElementById('rejectModal').addEventListener('click', (e) => {
+        if (e.target.id === 'rejectModal') {
+            closeRejectModal();
         }
     });
 </script>
