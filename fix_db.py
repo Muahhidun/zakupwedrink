@@ -40,6 +40,12 @@ async def main():
     except Exception as e:
         print(f"Error: {e}")
         
+    try:
+        await conn.execute("ALTER TABLE products ADD COLUMN is_active BOOLEAN DEFAULT TRUE")
+        print("products.is_active added successfully.")
+    except Exception as e:
+        print(f"Error (is_active): {e}")
+        
     await conn.close()
 
 if __name__ == '__main__':
