@@ -46,6 +46,9 @@ def set_bot_instance(bot):
 
 
 def json_serializer(obj):
+    import datetime
+    if isinstance(obj, (datetime.date, datetime.datetime, datetime.time)):
+        return obj.isoformat()
     if hasattr(obj, 'isoformat'):
         return obj.isoformat()
     return str(obj)
