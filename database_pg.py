@@ -1026,22 +1026,20 @@ class DatabasePG:
         if isinstance(date, str):
             date = datetime.strptime(date, '%Y-%m-%d').date()
             
+        parsed_start = None
         if isinstance(start_time, str) and start_time:
-            start_time = datetime.strptime(start_time, '%H:%M').time()
-        elif not start_time:
-            start_time = None
+            parsed_start = datetime.strptime(start_time, '%H:%M').time()
             
+        parsed_end = None
         if isinstance(end_time, str) and end_time:
-            end_time = datetime.strptime(end_time, '%H:%M').time()
-        elif not end_time:
-            end_time = None
+            parsed_end = datetime.strptime(end_time, '%H:%M').time()
             
         async with self.pool.acquire() as conn:
             shift_id = await conn.fetchval("""
                 INSERT INTO shifts (company_id, user_id, date, start_time, end_time)
                 VALUES ($1, $2, $3, $4, $5)
                 RETURNING id
-            """, company_id, user_id, date, start_time, end_time)
+            """, company_id, user_id, date, parsed_start, parsed_end)
             return shift_id
 
     async def delete_shift(self, company_id: int, shift_id: int) -> bool:

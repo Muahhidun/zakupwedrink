@@ -17,6 +17,7 @@ async def send_auto_purchase_order(bot: Bot):
     Автоматически рассчитать и отправить заказ на закуп (если сумма >= 500,000₸)
     Отправляется в 12:00 по Астане
     """
+    try:
         from database import Database
         from database_pg import DatabasePG
         from utils.calculations import get_auto_order_with_threshold, format_auto_order_list
