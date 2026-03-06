@@ -17,7 +17,9 @@ class DatabasePG:
             self.database_url,
             min_size=1,
             max_size=10,
-            ssl='require'
+            ssl='require',
+            statement_cache_size=0,
+            max_cached_statement_lifetime=0
         )
 
         async with self.pool.acquire() as conn:
