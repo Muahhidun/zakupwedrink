@@ -503,8 +503,13 @@ async def save_stock(request):
         stock_items = data.get('stock', [])
         user_id = data.get('user_id')
 
-        if not user_id or user_id == 'unknown':
+        if not user_id or str(user_id) == 'unknown':
             return safe_json_response({'error': 'User ID required'}, status=400)
+            
+        try:
+            user_id = int(user_id)
+        except ValueError:
+            return safe_json_response({'error': 'Invalid User ID format'}, status=400)
 
         working_date_str = get_working_date()
         date_obj = datetime.strptime(working_date_str, '%Y-%m-%d').date()
