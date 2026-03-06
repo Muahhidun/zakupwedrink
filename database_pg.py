@@ -550,16 +550,7 @@ class DatabasePG:
                 WHERE company_id = $1 AND is_active = TRUE
                 ORDER BY created_at DESC
             """, company_id)
-            
-            staff = []
-            for r in records:
-                d = dict(r)
-                if d.get('created_at'):
-                    d['created_at'] = d['created_at'].isoformat()
-                if d.get('last_seen'):
-                    d['last_seen'] = d['last_seen'].isoformat()
-                staff.append(d)
-            return staff
+            return [dict(r) for r in records]
 
     async def get_user_role(self, user_id: int) -> str:
         """Получить роль пользователя"""
@@ -995,7 +986,10 @@ class DatabasePG:
             """, company_id, start_date, end_date)
             return [dict(r) for r in rows]
 
-    async def assign_shift(self, company_id: int, user_id: int, date: str, start_time: str = None, end_time: str = None) -> int:
+    async def assign_shift(self, company_id: int, user_id: int, date, start_time: str = None, end_time: str = None) -> int:
+        if isinstance(date, str):
+            from datetime import datetime
+            date = datetime.strptime(date, '%Y-%m-%d').date()
         async with self.pool.acquire() as conn:
             shift_id = await conn.fetchval("""
                 INSERT INTO shifts (company_id, user_id, date, start_time, end_time)

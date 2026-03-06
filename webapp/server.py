@@ -1030,16 +1030,21 @@ async def api_assign_shift(request):
     company_id = await get_current_company(request)
     try:
         data = await request.json()
-        user_id = data.get('user_id')
+        user_ids = data.get('user_ids')
+        if not user_ids and data.get('user_id'):
+            user_ids = [data.get('user_id')]
+            
         date = data.get('date')
         start_time = data.get('start_time')
         end_time = data.get('end_time')
         
-        if not user_id or not date:
-            return safe_json_response({'error': 'user_id and date required'}, status=400)
+        if not user_ids or not date:
+            return safe_json_response({'error': 'user_ids and date required'}, status=400)
             
-        shift_id = await db.assign_shift(company_id, user_id, date, start_time, end_time)
-        return safe_json_response({'success': True, 'shift_id': shift_id})
+        for uid in user_ids:
+            await db.assign_shift(company_id, uid, date, start_time, end_time)
+            
+        return safe_json_response({'success': True})
     except Exception as e:
         return safe_json_response({'error': str(e)}, status=500)
 
@@ -1064,10 +1069,19 @@ async def schedule_page(request):
     user = await get_current_user(request)
     company_id = await get_current_company(request)
     staff = await db.get_users_by_company(company_id)
+    
+    # stringify datetimes for tojson in template
+    staff_json_ready = []
+    for d in staff:
+        d_copy = dict(d)
+        if d_copy.get('created_at'): d_copy['created_at'] = d_copy['created_at'].isoformat()
+        if d_copy.get('last_seen'): d_copy['last_seen'] = d_copy['last_seen'].isoformat()
+        staff_json_ready.append(d_copy)
+        
     return aiohttp_jinja2.render_template('schedule.html', request, {
         'user': user, 
         'role': user['role'] if user else None,
-        'staff': staff
+        'staff': staff_json_ready
     })
 
 

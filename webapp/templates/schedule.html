@@ -175,7 +175,7 @@
 
 {% if role in ['admin', 'manager'] %}
 <!-- Modal for Assigning Shift -->
-<div class="modal" id="shiftModal">
+<div class="modal-overlay" id="shiftModal" style="display: none;">
     <div class="modal-content">
         <div class="modal-header">
             <h2 style="font-size: 20px; font-weight: 600;">Управление сменой</h2>
@@ -187,15 +187,18 @@
             <input type="hidden" id="shiftDate">
             <p id="shiftDateLabel" style="font-weight: 500; margin-bottom: 20px; color: var(--primary);"></p>
 
-            <div class="form-group">
-                <label class="form-label">Сотрудник</label>
-                <select class="form-input" id="shiftUser" style="width: 100%;">
-                    <option value="">Выберите сотрудника</option>
+            <div class="form-group" style="margin-bottom: 16px;">
+                <label class="form-label">Сотрудники</label>
+                <div id="shiftUsersContainer"
+                    style="max-height: 200px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 8px; padding: 8px; background: var(--bg-card);">
                     {% for s in staff %}
-                    <option value="{{ s.id }}">{{ s.first_name }} {{ s.last_name or '' }} (@{{ s.username or
-                        'нет_юзернейма' }})</option>
+                    <label
+                        style="display: flex; align-items: center; gap: 8px; padding: 6px; cursor: pointer; border-radius: 4px;">
+                        <input type="checkbox" class="shift-user-checkbox" value="{{ s.id }}">
+                        <span style="font-size: 14px;">{{ s.real_name or s.first_name }} {{ s.last_name or '' }}</span>
+                    </label>
                     {% endfor %}
-                </select>
+                </div>
             </div>
 
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
@@ -244,6 +247,16 @@
             dateFormat: "H:i",
             time_24hr: true
         });
+
+        // Close modal on click outside
+        const shiftModal = document.getElementById('shiftModal');
+        if (shiftModal) {
+            shiftModal.addEventListener('click', (e) => {
+                if (e.target === shiftModal) {
+                    closeModal('shiftModal');
+                }
+            });
+        }
 
         renderCalendar();
     });
@@ -361,7 +374,8 @@
         if (!isAdmin) return;
         document.getElementById('shiftDate').value = dateStr;
         document.getElementById('shiftDateLabel').textContent = `${dayNum} ${monthName}`;
-        document.getElementById('shiftUser').value = '';
+        
+        document.querySelectorAll('.shift-user-checkbox').forEach(cb => cb.checked = false);
         document.getElementById('shiftStart').value = '';
         document.getElementById('shiftEnd').value = '';
 
@@ -389,22 +403,22 @@
             listContainer.style.display = 'none';
         }
 
-        document.getElementById('shiftModal').classList.add('active');
+        document.getElementById('shiftModal').style.display = 'flex';
     }
 
     function closeModal(id) {
-        document.getElementById(id).classList.remove('active');
+        document.getElementById(id).style.display = 'none';
     }
 
     async function saveShift() {
         const btn = document.getElementById('saveShiftBtn');
-        const user_id = document.getElementById('shiftUser').value;
+        const user_ids = Array.from(document.querySelectorAll('.shift-user-checkbox:checked')).map(cb => Number(cb.value));
         const date = document.getElementById('shiftDate').value;
         const start_time = document.getElementById('shiftStart').value;
         const end_time = document.getElementById('shiftEnd').value;
 
-        if (!user_id) {
-            alert('Пожалуйста, выберите сотрудника');
+        if (user_ids.length === 0) {
+            alert('Пожалуйста, выберите хотя бы одного сотрудника');
             return;
         }
 
@@ -415,7 +429,7 @@
             const res = await fetch('/api/shifts/assign', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ user_id: Number(user_id), date, start_time, end_time })
+                body: JSON.stringify({ user_ids: user_ids, date, start_time, end_time })
             });
             const data = await res.json();
 
