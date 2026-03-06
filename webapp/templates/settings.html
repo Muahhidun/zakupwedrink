@@ -163,6 +163,19 @@
             <input type="text" id="companyId" class="form-control" disabled value="{{ company_id }}">
         </div>
 
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+            <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" for="defaultShiftStart">Нач. смены (по умолчанию)</label>
+                <input type="text" id="defaultShiftStart" class="form-control" placeholder="09:00">
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" for="defaultShiftEnd">Кон. смены (по умолчанию)</label>
+                <input type="text" id="defaultShiftEnd" class="form-control" placeholder="21:00">
+            </div>
+        </div>
+        <p style="font-size: 13px; color: var(--text-tertiary); margin-top: 0; margin-bottom: 16px;">Формат времени
+            ЧЧ:ММ. Автоматически подставляется в графике.</p>
+
         <div style="margin-top: auto; padding-top: 16px;">
             <button class="btn btn-primary" id="saveProfileBtn" onclick="saveProfile()" style="width: 100%;">
                 <span class="material-symbols-rounded">save</span>
@@ -230,6 +243,13 @@
 
                 // Set form values
                 document.getElementById('companyName').value = comp.name || '';
+                
+                if (comp.default_shift_start) {
+                    document.getElementById('defaultShiftStart').value = comp.default_shift_start.substring(0, 5);
+                }
+                if (comp.default_shift_end) {
+                    document.getElementById('defaultShiftEnd').value = comp.default_shift_end.substring(0, 5);
+                }
 
                 // Show subscription block
                 document.getElementById('subscriptionLoading').style.display = 'none';
@@ -290,6 +310,8 @@
     async function saveProfile() {
         const nameInput = document.getElementById('companyName');
         const name = nameInput.value.trim();
+        const default_shift_start = document.getElementById('defaultShiftStart').value.trim();
+        const default_shift_end = document.getElementById('defaultShiftEnd').value.trim();
 
         if (!name) {
             showToast('Название компании не может быть пустым', 'warning');
@@ -306,7 +328,7 @@
             const res = await fetch('/api/company/settings', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name })
+                body: JSON.stringify({ name, default_shift_start, default_shift_end })
             });
             const data = await res.json();
 
