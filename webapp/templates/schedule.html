@@ -7,7 +7,7 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
 <style>
     .calendar-card {
-        background: var(--bg-card);
+        background: var(--bg-surface-opaque);
         border: 1px solid var(--border-color);
         border-radius: 16px;
         padding: 24px;
@@ -109,7 +109,7 @@
         font-size: 11px;
         padding: 4px 6px;
         border-radius: 6px;
-        background: var(--bg-card);
+        background: var(--bg-surface-opaque);
         border: 1px solid var(--border-color);
         white-space: nowrap;
         overflow: hidden;
@@ -146,7 +146,7 @@
     }
 
     .modal-overlay .modal-content {
-        background: var(--bg-card);
+        background: var(--bg-surface-opaque);
         border-radius: 16px;
         width: 100%;
         max-width: 450px;
@@ -225,7 +225,7 @@
             <div class="form-group" style="margin-bottom: 16px;">
                 <label class="form-label">Сотрудники</label>
                 <div id="shiftUsersContainer"
-                    style="max-height: 200px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 8px; padding: 8px; background: var(--bg-card);">
+                    style="max-height: 200px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 8px; padding: 8px; background: var(--bg-surface-opaque);">
                     {% for s in staff %}
                     <label
                         style="display: flex; align-items: center; gap: 8px; padding: 6px; cursor: pointer; border-radius: 4px;">
@@ -239,11 +239,11 @@
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
                 <div class="form-group">
                     <label class="form-label">Начало смены</label>
-                    <input type="text" class="form-input timepicker" id="shiftStart" placeholder="09:00">
+                    <input type="text" class="form-control timepicker" id="shiftStart" placeholder="09:00">
                 </div>
                 <div class="form-group">
                     <label class="form-label">Конец смены</label>
-                    <input type="text" class="form-input timepicker" id="shiftEnd" placeholder="21:00">
+                    <input type="text" class="form-control timepicker" id="shiftEnd" placeholder="21:00">
                 </div>
             </div>
             <p style="font-size: 12px; color: var(--text-tertiary); margin-bottom: 20px;">

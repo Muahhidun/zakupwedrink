@@ -987,9 +987,20 @@ class DatabasePG:
             return [dict(r) for r in rows]
 
     async def assign_shift(self, company_id: int, user_id: int, date, start_time: str = None, end_time: str = None) -> int:
+        from datetime import datetime
         if isinstance(date, str):
-            from datetime import datetime
             date = datetime.strptime(date, '%Y-%m-%d').date()
+            
+        if isinstance(start_time, str) and start_time:
+            start_time = datetime.strptime(start_time, '%H:%M').time()
+        elif not start_time:
+            start_time = None
+            
+        if isinstance(end_time, str) and end_time:
+            end_time = datetime.strptime(end_time, '%H:%M').time()
+        elif not end_time:
+            end_time = None
+            
         async with self.pool.acquire() as conn:
             shift_id = await conn.fetchval("""
                 INSERT INTO shifts (company_id, user_id, date, start_time, end_time)
