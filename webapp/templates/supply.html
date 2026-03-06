@@ -7,18 +7,27 @@
 {% block extra_css %}
 <style>
     .supply-container {
-        max-width: 800px;
+        padding: var(--spacing-lg);
+        max-width: 1200px;
         margin: 0 auto;
     }
 
-    .supply-header {
+    .page-header {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        margin-bottom: 24px;
+        margin-bottom: var(--spacing-xl);
         flex-wrap: wrap;
         gap: 16px;
     }
+
+    .page-title {
+        font-size: 24px;
+        font-weight: 700;
+        color: var(--text-primary);
+        margin: 0;
+    }
+
 
     .product-row {
         display: grid;
@@ -75,15 +84,17 @@
 
 {% block content %}
 <div class="supply-container fade-in-up">
-    <div class="supply-header">
-        <div class="form-group" style="margin-bottom: 0;">
-            <label class="form-label" for="supplyDate">Дата поставки</label>
-            <input type="date" id="supplyDate" class="form-control">
+    <div class="page-header">
+        <h1 class="page-title">Приемка товаров (Поставка)</h1>
+        <div style="display: flex; align-items: center; gap: 16px;">
+            <div class="form-group" style="margin-bottom: 0;">
+                <input type="date" id="supplyDate" class="form-control" title="Дата поставки">
+            </div>
+            <button class="btn btn-primary" onclick="submitSupply()">
+                <span class="material-symbols-rounded">save</span>
+                Сохранить поставку
+            </button>
         </div>
-        <button class="btn btn-primary" onclick="submitSupply()">
-            <span class="material-symbols-rounded">save</span>
-            Сохранить поставку
-        </button>
     </div>
 
     <div class="card" style="padding: 0;">
@@ -229,7 +240,7 @@
                     // Иначе обычные килограммы или литры
                     row.querySelector('.weight-input').value = (boxes * packageWeight).toFixed(1);
                 }
-                
+
                 row.querySelector('.cost-input').value = (boxes * price).toFixed(0);
             }
         }
