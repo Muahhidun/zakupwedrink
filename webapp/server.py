@@ -1080,7 +1080,7 @@ def create_app():
         max_age=86400 * 30, # 30 дней
         httponly=True,
         secure=True,
-        samesite='Lax'
+        samesite='None'
     )
     aiohttp_session.setup(app, storage)
 
