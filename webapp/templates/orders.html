@@ -41,21 +41,6 @@
                 </div>
             </div>
 
-            <!-- Период анализа -->
-            <div>
-                <div
-                    style="font-size: 13px; color: var(--text-tertiary); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">
-                    Период анализа расхода (ретроспектива)</div>
-                <select id="lookbackPeriod"
-                    style="padding: 10px 14px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-surface); color: var(--text-primary); cursor: pointer;">
-                    <option value="14">Последние 14 дней</option>
-                    <option value="30" selected>Последние 30 дней (рекомендуется)</option>
-                    <option value="60">Последние 60 дней</option>
-                    <option value="90">Последние 90 дней</option>
-                </select>
-                <span style="font-size: 12px; color: var(--text-tertiary); margin-left: 12px;">Чем больше период, тем
-                    точнее средний расход</span>
-            </div>
         </div>
     </div>
 
@@ -106,8 +91,7 @@
             return;
         }
 
-        const lookback = document.getElementById('lookbackPeriod').value;
-        showToast(`Рассчитываем заказ на ${days} дней (анализ за ${lookback} дн.)...`, 'info');
+        showToast(`Рассчитываем смарт-заказ на ${days} дней...`, 'info');
 
         const container = document.getElementById('orderResultContainer');
         const tbody = document.getElementById('orderTableBody');
@@ -124,15 +108,15 @@
         `;
 
         try {
-            const res = await fetch(`/api/orders/generate?days=${days}&lookback=${lookback}`);
+            const res = await fetch(`/api/orders/generate?days=${days}`);
             if (!res.ok) {
                 const errorData = await res.json();
                 throw new Error(errorData.error || 'Network error');
             }
             const data = await res.json();
 
-            document.getElementById('orderTitle').textContent = `План закупа на ${days} дней`;
-            orderMeta.textContent = `Средний расход рассчитан на основе данных за последние ${data.lookback_days} дней`;
+            document.getElementById('orderTitle').textContent = `Автоматический смарт план на ${days} дней`;
+            orderMeta.innerHTML = `<span class="material-symbols-rounded" style="font-size:16px;vertical-align:middle;margin-right:4px;color:var(--primary);">smart_toy</span> <span style="vertical-align:middle;">Система автоматически выбрала наилучший сценарий расхода из статистики за 30, 60 и 90 дней для обеспечения безопасности остатков</span>`;
             document.getElementById('orderTotal').textContent = `${data.total_cost.toLocaleString()} ₸`;
 
             tbody.innerHTML = '';
@@ -171,8 +155,8 @@
                     <div style="font-weight: 600; margin-bottom: 8px;">Ошибка расчета</div>
                     <div style="font-size: 14px; opacity: 0.8;">${e.message}</div>
                     <div style="font-size: 13px; margin-top: 16px; color: var(--text-tertiary);">
-                        Обычно это означает, что за последние ${lookback} дней нет записей об остатках.<br>
-                        Попробуйте выбрать меньший период анализа или проверьте наличие данных в Истории.
+                        Обычно это означает, что за последние 30-90 дней нет записей об остатках.<br>
+                        Убедитесь, что вы регулярно вносите данные об остатках.
                     </div>
                 </td></tr>
             `;

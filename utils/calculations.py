@@ -466,14 +466,13 @@ def calculate_daily_cost(consumption_data: List[Dict]) -> Tuple[float, str]:
     return total_cost, "\n".join(lines)
 
 
-async def calculate_order(db, company_id: int, days: int, lookback_days: int = 30) -> Dict:
+async def calculate_order(db, company_id: int, days: int) -> Dict:
     """
     Рассчитывает необходимое количество товара для заказа на заданное число дней.
-    lookback_days: за сколько дней анализировать расход для среднего значения.
     """
     try:
-        # Получаем данные об остатках и расходе за указанный период ретроспективы для конкретной компании
-        stock_data = await db.get_stock_with_consumption(company_id=company_id, base_lookback_days=lookback_days)
+        # Получаем данные об остатках и расходе (Умная ретроспектива - max(30,60,90))
+        stock_data = await db.get_stock_with_consumption(company_id=company_id)
         
         # Получаем список для заказа на указанное кол-во дней вперед
         products_to_order = get_products_to_order(
@@ -502,7 +501,7 @@ async def calculate_order(db, company_id: int, days: int, lookback_days: int = 3
             
         return {
             'days': days,
-            'lookback_days': lookback_days,
+            'lookback_days': 'smart',
             'total_cost': total_cost,
             'items': api_items
         }

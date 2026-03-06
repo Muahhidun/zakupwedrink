@@ -328,13 +328,12 @@ async def generate_order_api(request):
     try:
         company_id = await get_current_company(request)
         days = int(request.query.get('days', 10))
-        lookback = int(request.query.get('lookback', 30))
         
-        if days <= 0 or lookback <= 0:
+        if days <= 0:
             return safe_json_response({'error': 'Параметры должны быть больше 0'}, status=400)
             
         from utils.calculations import calculate_order
-        result = await calculate_order(db, company_id, days, lookback_days=lookback)
+        result = await calculate_order(db, company_id, days)
         return safe_json_response(result)
     except Exception as e:
         import traceback

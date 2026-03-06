@@ -371,8 +371,8 @@ class DatabasePG:
             """, company_id, start_date, end_date)
             return [dict(row) for row in rows]
 
-    async def get_stock_with_consumption(self, company_id: int, base_lookback_days: int = 30) -> List[Dict]:
-        """Получить текущие остатки и средний расход с умным увеличением периода для редко расходуемых товаров"""
+    async def get_stock_with_consumption(self, company_id: int) -> List[Dict]:
+        """Получить текущие остатки и средний (МАКСИМАЛЬНЫЙ из 30/60/90) умный расход"""
         from datetime import timedelta
         latest_stock = await self.get_latest_stock(company_id)
         if not latest_stock:
@@ -407,24 +407,35 @@ class DatabasePG:
             pending_boxes = pending_w / item['package_weight'] if item['package_weight'] else 0
             total_available = item['quantity'] + pending_boxes
 
-            # Evaluate consumption tiers
-            actual_days = days_30
-            cons = cons_30.get(pid)
+            # Evaluate consumption tiers for all 3 periods and take the MAXIMUM daily qty
+            cons_30_data = cons_30.get(pid)
+            cons_60_data = cons_60.get(pid)
+            cons_90_data = cons_90.get(pid)
             
-            if not cons or cons['consumed_quantity'] <= 0:
-                actual_days = days_60
-                cons = cons_60.get(pid)
-                
-                if not cons or cons['consumed_quantity'] <= 0:
-                    actual_days = days_90
-                    cons = cons_90.get(pid)
+            avg_30 = (cons_30_data['consumed_quantity'] / days_30) if cons_30_data and cons_30_data['consumed_quantity'] > 0 else 0
+            avg_60 = (cons_60_data['consumed_quantity'] / days_60) if cons_60_data and cons_60_data['consumed_quantity'] > 0 else 0
+            avg_90 = (cons_90_data['consumed_quantity'] / days_90) if cons_90_data and cons_90_data['consumed_quantity'] > 0 else 0
             
-            if cons and cons['consumed_quantity'] > 0:
-                avg_daily_qty = cons['consumed_quantity'] / actual_days
-                avg_daily_weight = cons['consumed_weight'] / actual_days
-                item['avg_daily_consumption_qty'] = round(avg_daily_qty, 2)
-                item['avg_daily_consumption_weight'] = round(avg_daily_weight, 2)
-                item['days_remaining'] = round(total_available / avg_daily_qty, 1) if avg_daily_qty > 0 else 999
+            avg_w_30 = (cons_30_data['consumed_weight'] / days_30) if cons_30_data and cons_30_data['consumed_weight'] > 0 else 0
+            avg_w_60 = (cons_60_data['consumed_weight'] / days_60) if cons_60_data and cons_60_data['consumed_weight'] > 0 else 0
+            avg_w_90 = (cons_90_data['consumed_weight'] / days_90) if cons_90_data and cons_90_data['consumed_weight'] > 0 else 0
+
+            max_avg_qty = max(avg_30, avg_60, avg_90)
+            
+            # We also need the weight corresponding to the max qty
+            max_avg_w = 0
+            if max_avg_qty > 0:
+                if max_avg_qty == avg_30:
+                    max_avg_w = avg_w_30
+                elif max_avg_qty == avg_60:
+                    max_avg_w = avg_w_60
+                else:
+                    max_avg_w = avg_w_90
+
+            if max_avg_qty > 0:
+                item['avg_daily_consumption_qty'] = round(max_avg_qty, 2)
+                item['avg_daily_consumption_weight'] = round(max_avg_w, 2)
+                item['days_remaining'] = round(total_available / max_avg_qty, 1)
             else:
                 item['avg_daily_consumption_qty'] = 0
                 item['avg_daily_consumption_weight'] = 0
