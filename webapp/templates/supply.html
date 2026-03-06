@@ -119,7 +119,8 @@
             <select class="form-control product-select" onchange="updateTotal()">
                 <option value="">Выберите товар...</option>
                 {% for p in products %}
-                <option value="{{p.id}}" data-price="{{p.price_per_box}}">{{p.name_internal}}</option>
+                <option value="{{p.id}}" data-price="{{p.price_per_box}}" data-weight="{{p.package_weight}}"
+                    data-unit="{{p.unit}}" data-unitsperbox="{{p.units_per_box}}">{{p.name_internal}}</option>
                 {% endfor %}
             </select>
         </div>
@@ -171,7 +172,7 @@
         const row = document.createElement('div');
         row.className = 'product-row';
 
-        let options = products.map(p => `<option value="${p.id}" data-price="${p.price_per_box}" data-weight="${p.package_weight}">${p.name_internal}</option>`).join('');
+        let options = products.map(p => `<option value="${p.id}" data-price="${p.price_per_box}" data-weight="${p.package_weight}" data-unit="${p.unit}" data-unitsperbox="${p.units_per_box}">${p.name_internal}</option>`).join('');
 
         row.innerHTML = `
             <div class="product-name">
@@ -215,11 +216,20 @@
         if (opt && opt.value) {
             const price = parseFloat(opt.dataset.price || 0);
             const packageWeight = parseFloat(opt.dataset.weight || 1);
+            const unit = opt.dataset.unit || 'кг';
+            const unitsPerBox = parseFloat(opt.dataset.unitsperbox || 1);
             const boxes = parseFloat(input.value || 0);
 
             // Auto-calculate weight and cost
             if (boxes > 0) {
-                row.querySelector('.weight-input').value = (boxes * packageWeight).toFixed(1);
+                if (unit === 'шт') {
+                    // Если товар в штуках, количество в базу заносится в штуках
+                    row.querySelector('.weight-input').value = (boxes * unitsPerBox).toFixed(0);
+                } else {
+                    // Иначе обычные килограммы или литры
+                    row.querySelector('.weight-input').value = (boxes * packageWeight).toFixed(1);
+                }
+                
                 row.querySelector('.cost-input').value = (boxes * price).toFixed(0);
             }
         }

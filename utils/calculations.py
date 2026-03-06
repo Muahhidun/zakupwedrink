@@ -142,18 +142,21 @@ def round_boxes_02_rule(boxes_decimal: float) -> int:
 
 def calculate_order_quantity(avg_daily_consumption: float, days: int,
                             current_stock: float, box_weight: float,
-                            use_02_rule: bool = False, pending_weight: float = 0) -> Tuple[float, int]:
+                            use_02_rule: bool = False, pending_weight: float = 0,
+                            unit: str = 'кг', units_per_box: int = 1) -> Tuple[float, int]:
     """
     Рассчитать количество для заказа
-    Возвращает: (вес в кг, количество коробок)
+    Возвращает: (вес/штуки к заказу, количество коробок)
 
     Args:
         avg_daily_consumption: средний расход в день
         days: на сколько дней заказывать
         current_stock: текущий остаток
-        box_weight: вес одной коробки
+        box_weight: вес одной коробки в кг (или объем в л)
         use_02_rule: использовать правило округления 0.2
         pending_weight: вес товара в активных заказах (в пути)
+        unit: единица измерения ('кг', 'л', 'шт')
+        units_per_box: количество штук в коробке (для unit='шт')
     """
     required_weight = avg_daily_consumption * days
     # Учитываем текущий остаток И товары в пути
@@ -163,20 +166,28 @@ def calculate_order_quantity(avg_daily_consumption: float, days: int,
     if needed_weight == 0:
         return 0, 0
 
+    # Определяем метрику размера одной коробки
+    is_pieces = unit == 'шт'
+    box_size_metric = float(units_per_box) if is_pieces else float(box_weight)
+    
+    # Защита от деления на ноль
+    if box_size_metric <= 0:
+        box_size_metric = 1.0
+
     # Минимальный порог: если нужно меньше 30% от веса коробки, не заказываем
     # (с учетом товаров в пути хватает запаса)
     MIN_THRESHOLD = 0.3  # 30% от коробки
-    if needed_weight < box_weight * MIN_THRESHOLD:
+    if needed_weight < box_size_metric * MIN_THRESHOLD:
         return 0, 0
 
-    boxes_decimal = needed_weight / box_weight
+    boxes_decimal = needed_weight / box_size_metric
 
     if use_02_rule:
         boxes = round_boxes_02_rule(boxes_decimal)
     else:
         # Стандартное округление вверх
         boxes = int(boxes_decimal)
-        if needed_weight % box_weight > 0:
+        if needed_weight % box_size_metric > 0:
             boxes += 1
 
     # Дополнительная проверка: если получилось 0 коробок, возвращаем 0
@@ -213,7 +224,9 @@ def get_products_to_order(stock_data: List[Dict], days_threshold: int = 7,
             needed_weight, boxes = calculate_order_quantity(
                 avg_consumption, order_days, current_stock, item['box_weight'],
                 use_02_rule=use_02_rule,
-                pending_weight=pending_weight
+                pending_weight=pending_weight,
+                unit=item.get('unit', 'кг'),
+                units_per_box=item.get('units_per_box', 1)
             )
 
             # Пропускаем если ничего не нужно заказывать (достаточно товара в пути)

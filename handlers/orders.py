@@ -534,7 +534,11 @@ async def process_manual_order_boxes(message: Message, state: FSMContext, db: Da
         product = data['selected_product']
 
         # Рассчитываем вес и стоимость
-        weight = boxes * product['box_weight']
+        if product.get('unit') == 'шт':
+            weight = boxes * float(product.get('units_per_box', 1))
+        else:
+            weight = boxes * float(product['box_weight'])
+            
         cost = boxes * product['price_per_box']
 
         # Создаем заказ в БД
@@ -550,10 +554,14 @@ async def process_manual_order_boxes(message: Message, state: FSMContext, db: Da
             cost=cost
         )
 
+        # Определяем отображаемую единицу и значение для сообщения
+        display_weight_metric = product.get('units_per_box', 1) if product.get('unit') == 'шт' else product['box_weight']
+        display_weight_fmt = f"{weight:.0f}" if product.get('unit') == 'шт' else f"{weight:.1f}"
+
         await message.answer(
             f"✅ <b>Заказ #{order_id} добавлен в пути!</b>\n\n"
             f"📦 {product['name_russian']}\n"
-            f"   {boxes} коробок × {product['box_weight']} {product['unit']} = {weight:.1f} {product['unit']}\n"
+            f"   {boxes} коробок × {display_weight_metric} {product['unit']} = {display_weight_fmt} {product['unit']}\n"
             f"💰 Стоимость: {cost:,.0f}₸\n\n"
             f"Теперь бот будет учитывать этот заказ при расчете закупа.",
             parse_mode="HTML",
