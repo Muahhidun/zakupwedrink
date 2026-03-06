@@ -176,6 +176,12 @@ class DatabasePG:
                 )
             """)
 
+            # Безопасное добавление новых колонок (миграция для существующих баз)
+            try:
+                await conn.execute("ALTER TABLE companies ADD COLUMN IF NOT EXISTS notes TEXT")
+            except Exception as e:
+                print(f"Migration error for companies.notes: {e}")
+
         print("✅ PostgreSQL SaaS база данных инициализирована")
 
     async def close(self):
@@ -544,7 +550,16 @@ class DatabasePG:
                 WHERE company_id = $1 AND is_active = TRUE
                 ORDER BY created_at DESC
             """, company_id)
-            return [dict(r) for r in records]
+            
+            staff = []
+            for r in records:
+                d = dict(r)
+                if d.get('created_at'):
+                    d['created_at'] = d['created_at'].isoformat()
+                if d.get('last_seen'):
+                    d['last_seen'] = d['last_seen'].isoformat()
+                staff.append(d)
+            return staff
 
     async def get_user_role(self, user_id: int) -> str:
         """Получить роль пользователя"""
