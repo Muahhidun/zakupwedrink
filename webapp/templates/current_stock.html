@@ -163,15 +163,19 @@
 
             const [stockRes, productsRes] = await Promise.all([
                 fetch('/api/stock/latest'),
-                fetch('/api/products')
+                fetch('/api/products?active_only=false')
             ]);
 
             currentStockData = await stockRes.json();
-            const productsInfo = await productsRes.json();
+            const productsInfoArray = await productsRes.json();
 
             if (!stockRes.ok || !productsRes.ok) {
                 throw new Error('Failed to fetch data');
             }
+
+            productsInfoArray.forEach(p => {
+                productsInfoDict[p.id] = p;
+            });
 
             if (currentStockData.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 32px">Остатки не найдены</td></tr>';
@@ -261,17 +265,28 @@
         currentStockData.forEach(item => {
             const tr = document.createElement('tr');
             const days = item.days_remaining !== undefined ? item.days_remaining : 999;
+            const productInfo = productsInfoDict[item.product_id] || {};
+            const isActive = productInfo.is_active !== false; // Default to true if undefined
 
             // Determine if critical (0 days or out of stock)
             if (days <= 0 || item.quantity === 0) {
                 tr.style.backgroundColor = 'var(--danger-light, #fdecea)';
             }
 
+            if (!isActive) {
+                tr.style.opacity = '0.5';
+            }
+
             let daysText = days === 999 ? 'Н/Д' : `${days} дней`;
 
             tr.innerHTML = `
                 <td>
-                    <div style="font-weight: 500">${item.prod_name}</div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <button onclick="toggleProduct(${item.product_id}, ${isActive})" class="btn btn-icon" style="padding: 4px; border: none; background: none; color: var(--text-tertiary);" title="${isActive ? 'Скрыть из Ввода остатков' : 'Показывать во Вводе остатков'}">
+                            <span class="material-symbols-rounded" style="font-size: 18px;">${isActive ? 'visibility' : 'visibility_off'}</span>
+                        </button>
+                        <div style="font-weight: 500">${item.prod_name}</div>
+                    </div>
                 </td>
                 <td style="text-align: right; font-weight: 600; font-variant-numeric: tabular-nums;">
                     ${item.quantity} шт
@@ -285,6 +300,41 @@
             `;
             tbody.appendChild(tr);
         });
+    }
+
+    async function toggleProduct(productId, currentStatus) {
+        if (!confirm(`Вы уверены, что хотите ${currentStatus ? 'скрыть' : 'показать'} этот товар во Вводе остатков?`)) return;
+
+        try {
+            const res = await fetch(`/api/products/${productId}/toggle`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ is_active: !currentStatus })
+            });
+
+            if (res.ok) {
+                if (productsInfoDict[productId]) {
+                    productsInfoDict[productId].is_active = !currentStatus;
+                }
+                renderTable();
+
+                // Show floating notification
+                const toast = document.createElement('div');
+                toast.className = 'toast show';
+                toast.style.backgroundColor = 'var(--success-color, #34c759)';
+                toast.innerHTML = `
+                    <span class="material-symbols-rounded">check_circle</span>
+                    <div>Товар успешно ${!currentStatus ? 'включен' : 'скрыт'}</div>
+                `;
+                document.body.appendChild(toast);
+                setTimeout(() => toast.remove(), 3000);
+            } else {
+                alert('Ошибка при изменении статуса товара');
+            }
+        } catch (e) {
+            console.error(e);
+            alert('Сетевая ошибка');
+        }
     }
 </script>
 {% endblock %}

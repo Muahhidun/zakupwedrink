@@ -61,6 +61,7 @@ class DatabasePG:
                     box_weight REAL NOT NULL,
                     price_per_box REAL NOT NULL,
                     unit TEXT DEFAULT 'кг',
+                    is_active BOOLEAN DEFAULT TRUE,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     UNIQUE(company_id, name_internal)
                 )
@@ -169,10 +170,13 @@ class DatabasePG:
                 units_per_box, box_weight, price_per_box, unit)
             return result
 
-    async def get_all_products(self, company_id: int) -> List[Dict]:
-        """Получить все товары компании"""
+    async def get_all_products(self, company_id: int, active_only: bool = False) -> List[Dict]:
+        """Получить все товары компании (либо только активные)"""
         async with self.pool.acquire() as conn:
-            rows = await conn.fetch("SELECT * FROM products WHERE company_id = $1 ORDER BY name_internal", company_id)
+            if active_only:
+                rows = await conn.fetch("SELECT * FROM products WHERE company_id = $1 AND is_active = TRUE ORDER BY name_internal", company_id)
+            else:
+                rows = await conn.fetch("SELECT * FROM products WHERE company_id = $1 ORDER BY name_internal", company_id)
             return [dict(row) for row in rows]
 
     async def get_product_by_name(self, company_id: int, name_internal: str) -> Optional[Dict]:
@@ -183,6 +187,16 @@ class DatabasePG:
                 company_id, name_internal
             )
             return dict(row) if row else None
+
+    async def toggle_product_status(self, company_id: int, product_id: int, is_active: bool) -> bool:
+        """Включить или отключить ингредиент"""
+        async with self.pool.acquire() as conn:
+            # Возвращает команду вроде "UPDATE 1", если успешно
+            result = await conn.execute(
+                "UPDATE products SET is_active = $1 WHERE company_id = $2 AND id = $3",
+                is_active, company_id, product_id
+            )
+            return result == "UPDATE 1"
 
     async def add_stock(self, company_id: int, product_id: int, date, quantity: float, weight: float):
         """Добавить/обновить остаток на дату"""

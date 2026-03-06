@@ -377,7 +377,7 @@
     }
 
     async function loadProducts() {
-        const res = await fetch('/api/products');
+        const res = await fetch('/api/products?active_only=true');
         products = await res.json();
     }
 

@@ -428,7 +428,8 @@ async def get_products(request):
     """API: Получить список всех товаров"""
     try:
         company_id = await get_current_company(request)
-        products = await db.get_all_products(company_id)
+        active_only = request.query.get('active_only', 'false').lower() == 'true'
+        products = await db.get_all_products(company_id, active_only=active_only)
 
         for product in products:
             if 'created_at' in product and product['created_at']:
@@ -437,6 +438,27 @@ async def get_products(request):
         return safe_json_response(products)
     except Exception as e:
         print(f"Ошибка получения товаров: {e}")
+        return safe_json_response({'error': str(e)}, status=500)
+
+async def toggle_product_status_route(request):
+    """API: Включить/выключить продукт"""
+    try:
+        user = await get_current_user(request)
+        if not user or user['role'] not in ['admin', 'manager']:
+             return safe_json_response({'error': 'Unauthorized'}, status=401)
+             
+        company_id = await get_current_company(request)
+        product_id = int(request.match_info.get('id'))
+        
+        data = await request.json()
+        is_active = data.get('is_active', True)
+        
+        success = await db.toggle_product_status(company_id, product_id, is_active)
+        if success:
+            return safe_json_response({'success': True})
+        return safe_json_response({'error': 'Product not found'}, status=404)
+    except Exception as e:
+        print(f"Ошибка переключения статуса товара: {e}")
         return safe_json_response({'error': str(e)}, status=500)
 
 async def save_supply(request):
@@ -927,6 +949,7 @@ def create_app():
     app.router.add_post('/api/supply', save_supply)
     
     app.router.add_get('/api/products', get_products)
+    app.router.add_post('/api/products/{id}/toggle', toggle_product_status_route)
     app.router.add_post('/api/stock', save_stock)
     app.router.add_get('/api/stock/latest', get_latest_stock)
     app.router.add_get('/api/stock/check', check_stock_exists)
