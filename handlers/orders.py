@@ -27,21 +27,22 @@ class OrderStates(StatesGroup):
     waiting_for_manual_order_boxes = State()
 
 
-async def prepare_order_data(db: Database):
+async def prepare_order_data(db, company_id=1):
     """Подготовить данные для формирования заказа с учетом товаров в пути"""
-    stock = await db.get_latest_stock()
+    stock = await db.get_latest_stock(company_id) if hasattr(db, 'pool') else await db.get_latest_stock()
     enriched_stock = []
 
     for item in stock:
         # Получаем историю остатков за последние 30 дней для стабильного среднего
-        history = await db.get_stock_history(item['product_id'], days=30)
-        supplies = await db.get_supply_history(item['product_id'], days=30)
-
-        # Рассчитываем средний расход с учетом поставок
-        avg_consumption, days_with_data, warning = calculate_average_consumption(history, supplies)
-
-        # Получаем вес товара в активных заказах (в пути)
-        pending_weight = await db.get_pending_weight_for_product(item['product_id'])
+        history_days = 30
+        if hasattr(db, 'pool'):
+            history = await db.get_stock_history(company_id, item['product_id'], days=history_days)
+            supplies = await db.get_supply_history(company_id, item['product_id'], days=history_days)
+            pending_weight = await db.get_pending_weight_for_product(company_id, item['product_id'])
+        else:
+            history = await db.get_stock_history(item['product_id'], days=history_days)
+            supplies = await db.get_supply_history(item['product_id'], days=history_days)
+            pending_weight = await db.get_pending_weight_for_product(item['product_id'])
 
         enriched_stock.append({
             **item,
@@ -58,7 +59,8 @@ async def generate_order(message: Message, db: Database, days: int,
     """Универсальная функция генерации заказа"""
     await message.answer("⏳ Рассчитываю заказ с учетом товаров в пути...")
 
-    stock_data = await prepare_order_data(db)
+    company_id = 1 # Temporary default for multi-tenant structure
+    stock_data = await prepare_order_data(db, company_id=company_id)
     products_to_order = get_products_to_order(
         stock_data,
         days_threshold=threshold,
@@ -407,7 +409,8 @@ async def cmd_test_auto_order(message: Message, db: Database):
         from utils.calculations import get_auto_order_with_threshold, format_auto_order_list
 
         # Подготавливаем данные
-        stock_data = await prepare_order_data(db)
+        company_id = 1
+        stock_data = await prepare_order_data(db, company_id=company_id)
 
         # Получаем заказ с порогом
         products_to_order, total_cost, should_notify = get_auto_order_with_threshold(

@@ -18,7 +18,7 @@ async def send_auto_purchase_order(bot: Bot):
     Отправляется в 12:00 по Астане
     """
     try:
-        from database import Database
+        from database_pg import DatabasePG
         from utils.calculations import get_auto_order_with_threshold, format_auto_order_list
         from handlers.orders import prepare_order_data
 
@@ -27,13 +27,13 @@ async def send_auto_purchase_order(bot: Bot):
             logger.warning("⚠️ DATABASE_URL не установлен")
             return
 
-        db = Database("wedrink.db")
+        db = DatabasePG(database_url)
         await db.init_db()
 
         logger.info("🔍 Рассчитываю автоматический заказ на 14 дней...")
 
         # Подготавливаем данные (аналогично ручному расчету)
-        stock_data = await prepare_order_data(db)
+        stock_data = await prepare_order_data(db, company_id=1)
 
         # Получаем заказ с порогом 500,000₸
         products_to_order, total_cost, should_notify = get_auto_order_with_threshold(
@@ -92,15 +92,19 @@ async def check_and_send_reminder(bot: Bot, group_chat_id: str, reminder_type: s
         reminder_type: Тип напоминания (morning, afternoon, evening, final)
     """
     try:
-        # Импортируем здесь чтобы избежать циклических зависимостей
-        from database import Database
-
-        db = Database("wedrink.db")
+        from database_pg import DatabasePG
+        database_url = os.getenv('DATABASE_URL')
+        if database_url:
+            db = DatabasePG(database_url)
+        else:
+            from database import Database
+            db = Database("wedrink.db")
         await db.init_db()
 
         # Проверяем были ли введены остатки сегодня
         today = datetime.now().date()
-        has_data = await db.has_stock_for_date(today)
+        company_id = 1 # Assuming default company
+        has_data = await db.has_stock_for_date(company_id, today) if hasattr(db, 'pool') else await db.has_stock_for_date(today)
 
         if has_data:
             logger.info(f"✅ Остатки за {today} уже введены, напоминание не требуется")
