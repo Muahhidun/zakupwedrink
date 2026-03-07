@@ -854,10 +854,12 @@ class DatabasePG:
         from datetime import datetime
         start_time = None
         if isinstance(default_shift_start, str) and default_shift_start:
+            default_shift_start = default_shift_start.replace('.', ':')
             start_time = datetime.strptime(default_shift_start, '%H:%M').time()
             
         end_time = None
         if isinstance(default_shift_end, str) and default_shift_end:
+            default_shift_end = default_shift_end.replace('.', ':')
             end_time = datetime.strptime(default_shift_end, '%H:%M').time()
             
         async with self.pool.acquire() as conn:
@@ -1030,10 +1032,12 @@ class DatabasePG:
             
         parsed_start = None
         if isinstance(start_time, str) and start_time:
+            start_time = start_time.replace('.', ':')
             parsed_start = datetime.strptime(start_time, '%H:%M').time()
             
         parsed_end = None
         if isinstance(end_time, str) and end_time:
+            end_time = end_time.replace('.', ':')
             parsed_end = datetime.strptime(end_time, '%H:%M').time()
             
         async with self.pool.acquire() as conn:
