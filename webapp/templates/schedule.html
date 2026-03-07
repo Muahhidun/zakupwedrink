@@ -107,6 +107,33 @@
         gap: 4px;
     }
 
+    .shift-time-header {
+        font-size: 10px;
+        font-weight: 600;
+        color: var(--text-secondary);
+        padding-left: 2px;
+        margin-top: 4px;
+        margin-bottom: 2px;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+
+    .shift-time-header::before {
+        content: '';
+        display: inline-block;
+        width: 4px;
+        height: 4px;
+        border-radius: 50%;
+        background: var(--text-muted);
+    }
+
+    .shift-time-group {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+    }
+
     .shift-pill {
         display: flex;
         align-items: center;
@@ -122,16 +149,10 @@
     }
 
     .shift-pill .shift-name {
-        font-weight: 600;
+        font-weight: 500;
         color: var(--text-primary);
         overflow: hidden;
         text-overflow: ellipsis;
-    }
-
-    .shift-pill .shift-time {
-        color: var(--text-secondary);
-        font-size: 10px;
-        margin-left: 4px;
     }
 
     /* Modern Modal Styling overrides */
@@ -379,34 +400,63 @@
             calendarBody.appendChild(dayDiv);
         }
 
-        // Fill shifts
+        // Fill shifts grouping by time
+        const shiftsByDate = {};
         shiftsData.forEach(shift => {
-            const container = document.getElementById(`shifts-${shift.date}`);
+            if (!shiftsByDate[shift.date]) {
+                shiftsByDate[shift.date] = {};
+            }
+
+            let timeStr = 'Весь день';
+            if (shift.start_time && shift.end_time) {
+                timeStr = `${shift.start_time.substring(0, 5)} - ${shift.end_time.substring(0, 5)}`;
+            }
+
+            if (!shiftsByDate[shift.date][timeStr]) {
+                shiftsByDate[shift.date][timeStr] = [];
+            }
+            shiftsByDate[shift.date][timeStr].push(shift);
+        });
+
+        Object.keys(shiftsByDate).forEach(date => {
+            const container = document.getElementById(`shifts-${date}`);
             if (container) {
                 container.parentElement.classList.remove('no-shifts');
-                const s = document.createElement('div');
-                s.className = 'shift-pill';
 
-                let timeStr = '';
-                if (shift.start_time && shift.end_time) {
-                    timeStr = `<span class="shift-time">${shift.start_time.substring(0, 5)}-${shift.end_time.substring(0, 5)}</span>`;
-                }
+                Object.keys(shiftsByDate[date]).forEach(timeStr => {
+                    // Create time header
+                    const timeHeader = document.createElement('div');
+                    timeHeader.className = 'shift-time-header';
+                    timeHeader.textContent = timeStr;
+                    container.appendChild(timeHeader);
 
-                // Colors based on role
-                let bg = 'rgba(74, 108, 247, 0.1)';
-                let color = 'var(--primary)';
-                if (shift.role === 'admin' || shift.role === 'manager') {
-                    bg = 'rgba(16, 185, 129, 0.1)';
-                    color = 'var(--success)';
-                }
+                    // Create wrapper for the pills under this time
+                    const pillsWrapper = document.createElement('div');
+                    pillsWrapper.className = 'shift-time-group';
 
-                s.style.background = bg;
-                s.style.borderColor = bg;
-                s.style.color = color;
+                    shiftsByDate[date][timeStr].forEach(shift => {
+                        const s = document.createElement('div');
+                        s.className = 'shift-pill';
 
-                let nameToDisplay = shift.real_name || shift.first_name;
-                s.innerHTML = `<span class="shift-name">${nameToDisplay}</span>${timeStr}`;
-                container.appendChild(s);
+                        // Colors based on role
+                        let bg = 'rgba(74, 108, 247, 0.1)';
+                        let color = 'var(--primary)';
+                        if (shift.role === 'admin' || shift.role === 'manager') {
+                            bg = 'rgba(16, 185, 129, 0.1)';
+                            color = 'var(--success)';
+                        }
+
+                        s.style.background = bg;
+                        s.style.borderColor = bg;
+                        s.style.color = color;
+
+                        let nameToDisplay = shift.real_name || shift.first_name;
+                        s.innerHTML = `<span class="shift-name">${nameToDisplay}</span>`;
+                        pillsWrapper.appendChild(s);
+                    });
+
+                    container.appendChild(pillsWrapper);
+                });
             }
         });
     }
