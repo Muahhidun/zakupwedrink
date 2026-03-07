@@ -82,6 +82,11 @@
         background: rgba(74, 108, 247, 0.05);
     }
 
+    .calendar-day.no-shifts {
+        background: rgba(239, 68, 68, 0.03);
+        border-color: rgba(239, 68, 68, 0.2);
+    }
+
     .day-number {
         position: absolute;
         top: 8px;
@@ -355,7 +360,7 @@
         // Days
         for (let i = 1; i <= daysInMonth; i++) {
             const dayDiv = document.createElement('div');
-            dayDiv.className = 'calendar-day';
+            dayDiv.className = 'calendar-day no-shifts';
 
             if (isCurrentMonth && i === todayDate) {
                 dayDiv.classList.add('today');
@@ -378,6 +383,7 @@
         shiftsData.forEach(shift => {
             const container = document.getElementById(`shifts-${shift.date}`);
             if (container) {
+                container.parentElement.classList.remove('no-shifts');
                 const s = document.createElement('div');
                 s.className = 'shift-pill';
 

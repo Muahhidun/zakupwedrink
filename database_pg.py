@@ -1021,6 +1021,12 @@ class DatabasePG:
     # ==========================
     
     async def get_shifts(self, company_id: int, start_date: str, end_date: str) -> list:
+        from datetime import datetime
+        if isinstance(start_date, str):
+            start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
+        if isinstance(end_date, str):
+            end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
+            
         async with self.pool.acquire() as conn:
             rows = await conn.fetch("""
                 SELECT s.id, s.user_id, s.date, s.start_time, s.end_time, s.status, s.company_id,
