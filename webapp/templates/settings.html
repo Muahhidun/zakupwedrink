@@ -166,11 +166,11 @@
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
             <div class="form-group" style="margin-bottom: 0;">
                 <label class="form-label" for="defaultShiftStart">Нач. смены (по умолчанию)</label>
-                <input type="text" id="defaultShiftStart" class="form-control" placeholder="09:00">
+                <input type="time" id="defaultShiftStart" class="form-control" value="09:00" required>
             </div>
             <div class="form-group" style="margin-bottom: 0;">
                 <label class="form-label" for="defaultShiftEnd">Кон. смены (по умолчанию)</label>
-                <input type="text" id="defaultShiftEnd" class="form-control" placeholder="21:00">
+                <input type="time" id="defaultShiftEnd" class="form-control" value="21:00" required>
             </div>
         </div>
         <p style="font-size: 13px; color: var(--text-tertiary); margin-top: 0; margin-bottom: 16px;">Формат времени
