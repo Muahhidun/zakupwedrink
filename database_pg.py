@@ -1116,6 +1116,6 @@ class DatabasePG:
                   AND s.date = $1 
                   AND s.start_time >= $2::time + interval '55 minutes'
                   AND s.start_time <= $2::time + interval '65 minutes'
-            """, target_date, target_time.strftime('%H:%M:%S'))
+            """, target_date, target_time)
             
             return [dict(row) for row in rows]

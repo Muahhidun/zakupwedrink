@@ -100,6 +100,15 @@
         color: var(--primary);
     }
 
+    .default-time {
+        position: absolute;
+        top: 8px;
+        left: 8px;
+        font-size: 10px;
+        font-weight: 500;
+        color: var(--text-tertiary);
+    }
+
     .shifts-container {
         margin-top: 24px;
         display: flex;
@@ -371,6 +380,12 @@
         const isCurrentMonth = today.getFullYear() === year && today.getMonth() === month;
         const todayDate = today.getDate();
 
+        const defaultStart = '{{ default_shift_start }}';
+        const defaultEnd = '{{ default_shift_end }}';
+        const dStart = defaultStart ? defaultStart.substring(0, 5) : '';
+        const dEnd = defaultEnd ? defaultEnd.substring(0, 5) : '';
+        const defaultTimeStr = (dStart && dEnd) ? `${dStart} - ${dEnd}` : '';
+
         // Empty slots before 1st day
         for (let i = 0; i < startDay; i++) {
             const emptyDiv = document.createElement('div');
@@ -394,7 +409,8 @@
                 dayDiv.onclick = () => openShiftModal(dateStr, i, monthNames[month]);
             }
 
-            dayDiv.innerHTML = `<div class="day-number">${i}</div>
+            dayDiv.innerHTML = `<div class="default-time">${defaultTimeStr}</div>
+                                <div class="day-number">${i}</div>
                                 <div class="shifts-container" id="shifts-${dateStr}"></div>`;
 
             calendarBody.appendChild(dayDiv);
@@ -424,11 +440,15 @@
                 container.parentElement.classList.remove('no-shifts');
 
                 Object.keys(shiftsByDate[date]).forEach(timeStr => {
-                    // Create time header
-                    const timeHeader = document.createElement('div');
-                    timeHeader.className = 'shift-time-header';
-                    timeHeader.textContent = timeStr;
-                    container.appendChild(timeHeader);
+                    const isDefault = timeStr === defaultTimeStr || timeStr === 'Весь день';
+
+                    if (!isDefault) {
+                        // Create time header
+                        const timeHeader = document.createElement('div');
+                        timeHeader.className = 'shift-time-header';
+                        timeHeader.textContent = timeStr;
+                        container.appendChild(timeHeader);
+                    }
 
                     // Create wrapper for the pills under this time
                     const pillsWrapper = document.createElement('div');
