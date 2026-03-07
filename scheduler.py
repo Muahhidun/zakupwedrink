@@ -194,6 +194,55 @@ async def check_and_send_reminder(bot: Bot, group_chat_id: str, reminder_type: s
     except Exception as e:
         logger.error(f"❌ Ошибка в check_and_send_reminder: {e}")
 
+async def check_and_send_shift_reminder(bot: Bot):
+    """
+    Проверить, есть ли у кого-то смена через 1 час, и отправить напоминание.
+    """
+    try:
+        from database_pg import DatabasePG
+        database_url = os.getenv('DATABASE_URL')
+        if not database_url:
+            return # Only supported in PG mode currently
+            
+        db = DatabasePG(database_url)
+        await db.init_db()
+
+        now_astana = datetime.now() # Scheduler is already running in UTC+5 context
+        users_in_one_hour = await db.get_users_with_shift_in_one_hour(now_astana)
+
+        success_count = 0
+        for data in users_in_one_hour:
+            user_id = data['id']
+            start_time_str = data.get('start_time', '')
+            if isinstance(start_time_str, str):
+                start_time_str = start_time_str[:5]
+            else:
+                start_time_str = str(start_time_str)[:5]
+
+            message = (
+                "🔔 <b>Напоминание о смене!</b>\n\n"
+                f"Ваша смена начинается примерно через час (в <b>{start_time_str}</b>).\n"
+                "Пожалуйста, не опаздывайте!"
+            )
+            
+            try:
+                await bot.send_message(
+                    chat_id=user_id,
+                    text=message,
+                    parse_mode="HTML"
+                )
+                success_count += 1
+            except Exception as e:
+                logger.error(f"❌ Ошибка отправки напоминания о смене пользователю {user_id}: {e}")
+
+        if users_in_one_hour:
+            logger.info(f"✅ Напоминание о предстоящей смене отправлено {success_count}/{len(users_in_one_hour)} пользователям")
+
+        await db.close()
+    except Exception as e:
+        logger.error(f"❌ Ошибка в check_and_send_shift_reminder: {e}")
+        import traceback
+        traceback.print_exc()
 
 def setup_scheduler(bot: Bot) -> AsyncIOScheduler:
     """
@@ -241,5 +290,16 @@ def setup_scheduler(bot: Bot) -> AsyncIOScheduler:
     )
     logger.info("📦 Автоматический расчет заказа настроен на 12:00 (Астана)")
     logger.info("   Порог отправки: 500,000₸ | Расчет на 14 дней | Округление по правилу 0.2")
+
+    # Добавляем проверку смен каждые 5 минут
+    scheduler.add_job(
+        check_and_send_shift_reminder,
+        trigger=CronTrigger(minute='*/5', timezone="Asia/Almaty"),
+        args=[bot],
+        id='shift_reminder',
+        name='Напоминание о смене (за 1 час)',
+        replace_existing=True
+    )
+    logger.info("⏰ Проверка предстоящих смен настроена (каждые 5 минут)")
 
     return scheduler

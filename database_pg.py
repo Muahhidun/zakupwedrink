@@ -1096,3 +1096,26 @@ class DatabasePG:
                 """, company_id)
                 
             return [row['id'] for row in rows]
+
+    async def get_users_with_shift_in_one_hour(self, current_datetime) -> list:
+        """
+        Возвращает список ID пользователей, у которых смена начинается ровно через 1 час.
+        """
+        target_date = current_datetime.date()
+        target_time = current_datetime.replace(minute=0, second=0, microsecond=0).time()
+        
+        # Мы ищем смены, где start_time равен target_time + 1 час.
+        # Поскольку target_time - это python datetime.time, мы можем использовать SQL интервалы
+        
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch("""
+                SELECT u.id, s.start_time
+                FROM users u
+                JOIN shifts s ON u.id = s.user_id
+                WHERE u.is_active = TRUE 
+                  AND s.date = $1 
+                  AND s.start_time >= $2::time + interval '55 minutes'
+                  AND s.start_time <= $2::time + interval '65 minutes'
+            """, target_date, target_time.strftime('%H:%M:%S'))
+            
+            return [dict(row) for row in rows]
