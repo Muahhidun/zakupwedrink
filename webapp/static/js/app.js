@@ -2,6 +2,35 @@
  * Main Web App JavaScript
  */
 
+// Global fetch interceptor to append Telegram WebApp InitData to all API requests
+const originalFetch = window.fetch;
+window.fetch = async function () {
+    let [resource, config] = arguments;
+    
+    // Check if the request is for our API
+    const url = typeof resource === 'string' ? resource : resource.url;
+    if (url && url.startsWith('/api/')) {
+        config = config || {};
+        config.headers = config.headers || {};
+        
+        // Add Telegram InitData if available
+        if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData) {
+            // Only add if not already present
+            if (!(config.headers instanceof Headers && config.headers.has('x-telegram-init-data')) && 
+                !config.headers['x-telegram-init-data']) {
+                
+                if (config.headers instanceof Headers) {
+                    config.headers.append('x-telegram-init-data', window.Telegram.WebApp.initData);
+                } else {
+                    config.headers['x-telegram-init-data'] = window.Telegram.WebApp.initData;
+                }
+            }
+        }
+    }
+    
+    return originalFetch(resource, config);
+};
+
 document.addEventListener('DOMContentLoaded', () => {
     initApp();
 });

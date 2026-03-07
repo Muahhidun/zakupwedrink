@@ -104,9 +104,29 @@ async def close_db(app):
 
 
 async def get_current_user(request):
-    """Вспомогательная функция для получения текущего пользователя из сессии"""
-
+    """Вспомогательная функция для получения текущего пользователя из сессии или Telegram WebApp"""
     
+    # 1. Сначала проверяем заголовок x-telegram-init-data (для Mini App)
+    init_data = request.headers.get('x-telegram-init-data')
+    if init_data:
+        bot_token = os.getenv('BOT_TOKEN')
+        if bot_token:
+            tg_user = verify_telegram_webapp(init_data, bot_token)
+            if tg_user:
+                # Если токен валиден, возвращаем пользователя (эмуляция сессии)
+                user_id = tg_user.get('id')
+                role = await db.get_user_role(user_id)
+                # Опционально: можно каждую авторизацию обновлять данные пользователя в БД
+                return {
+                    'id': user_id,
+                    'username': tg_user.get('username'),
+                    'first_name': tg_user.get('first_name'),
+                    'last_name': tg_user.get('last_name'),
+                    'photo_url': tg_user.get('photo_url'),
+                    'role': role
+                }
+
+    # 2. Иначе проверяем Cookie сессию (для обычного браузера)
     session = await aiohttp_session.get_session(request)
     if 'user' in session:
         return session['user']
@@ -136,9 +156,8 @@ async def auth_middleware(request, handler):
             if request.path.startswith('/api/'):
                 print(f"🔒 Unauthorized API access to {request.path}")
                 return safe_json_response({'error': 'Unauthorized'}, status=401)
-            else:
-                print(f"🔒 Redirecting to /login from {request.path}")
-                raise web.HTTPFound('/login')
+            # Для HTML страниц мы не делаем серверный редирект, чтобы Mini App мог загрузить скрипт авторизации.
+            # На стороне клиента app.js проверит /api/user/me и сделает редирект если нужно.
                 
     return await handler(request)
 
@@ -166,6 +185,37 @@ def verify_telegram_auth(data: dict, bot_token: str) -> bool:
     if not is_valid:
         print(f"❌ Hash mismatch. Expected: {hmac_hash}, got: {received_hash}")
     return is_valid
+
+
+def verify_telegram_webapp(init_data: str, bot_token: str) -> dict | None:
+    """Verifies Telegram WebApp initData and returns parsed user dict if valid"""
+    import urllib.parse
+    try:
+        parsed_data = dict(urllib.parse.parse_qsl(init_data))
+        if 'hash' not in parsed_data:
+            return None
+            
+        received_hash = parsed_data.pop('hash')
+        
+        # Sort keys
+        data_check_string = "\n".join(f"{k}={v}" for k, v in sorted(parsed_data.items()))
+        
+        # Calculate WebAppData secret key
+        secret_key = hmac.new(b"WebAppData", bot_token.encode(), hashlib.sha256).digest()
+        
+        # Calculate hash
+        calculated_hash = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
+        
+        if calculated_hash != received_hash:
+            return None
+            
+        # Parse user JSON
+        if 'user' in parsed_data:
+            return json.loads(parsed_data['user'])
+        return None
+    except Exception as e:
+        print(f"❌ Error parsing Telegram WebApp data: {e}")
+        return None
 
 
 async def telegram_login(request):
@@ -252,64 +302,45 @@ async def get_current_user_api(request):
 
 async def dashboard_page(request):
     """Страница Дашборда (Только для Админов)"""
-    user = await get_current_user(request)
-    if not user or user['role'] not in ['admin', 'manager']:
-        raise web.HTTPFound('/')
-        
+    user = await get_current_user(request) or {'role': 'user'}
+    
     context = {'user': user}
     return aiohttp_jinja2.render_template('dashboard.html', request, context)
 
 
 async def stock_input_page(request):
     """Страница ввода остатков (доступна всем авторизованным)"""
-    user = await get_current_user(request)
-    if not user:
-        raise web.HTTPFound('/login')
+    user = await get_current_user(request) or {'role': 'user'}
     context = {'user': user}
     return aiohttp_jinja2.render_template('stock_input.html', request, context)
 
 async def current_stock_page(request):
     """Страница текущих остатков"""
-    user = await get_current_user(request)
-    if not user or user['role'] not in ['admin', 'manager']:
-        raise web.HTTPFound('/')
-        
+    user = await get_current_user(request) or {'role': 'user'}
     context = {'user': user}
     return aiohttp_jinja2.render_template('current_stock.html', request, context)
 
 async def orders_page(request):
     """Страница параметров заказа"""
-    user = await get_current_user(request)
-    if not user or user['role'] not in ['admin', 'manager']:
-        raise web.HTTPFound('/')
-        
+    user = await get_current_user(request) or {'role': 'user'}
     context = {'user': user}
     return aiohttp_jinja2.render_template('orders.html', request, context)
 
 async def history_page(request):
     """Страница истории"""
-    user = await get_current_user(request)
-    if not user or user['role'] not in ['admin', 'manager']:
-        raise web.HTTPFound('/')
-        
+    user = await get_current_user(request) or {'role': 'user'}
     context = {'user': user}
     return aiohttp_jinja2.render_template('history.html', request, context)
 
 async def supply_page(request):
     """Страница приемки товаров"""
-    user = await get_current_user(request)
-    if not user or user['role'] not in ['admin', 'manager']:
-        raise web.HTTPFound('/')
-        
+    user = await get_current_user(request) or {'role': 'user'}
     context = {'user': user}
     return aiohttp_jinja2.render_template('supply.html', request, context)
 
 async def reports_page(request):
     """Страница отчетов"""
-    user = await get_current_user(request)
-    if not user or user['role'] not in ['admin', 'manager']:
-        raise web.HTTPFound('/')
-        
+    user = await get_current_user(request) or {'role': 'user'}
     context = {'user': user}
     return aiohttp_jinja2.render_template('reports.html', request, context)
 
@@ -434,7 +465,7 @@ async def get_weekly_report_api(request):
 
 async def index(request):
     """Главная страница Mini App / Web App"""
-    user = await get_current_user(request)
+    user = await get_current_user(request) or {'role': 'user'}
     
     # Если это админ - показываем дашборд, иначе только склад
     html_file = 'dashboard.html' if user['role'] in ['admin', 'manager'] else 'stock_input.html'
