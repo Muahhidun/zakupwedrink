@@ -33,6 +33,13 @@ class DatabasePG:
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+            
+            # Migration: Add shift columns if they are missing
+            await conn.execute("""
+                ALTER TABLE companies
+                ADD COLUMN IF NOT EXISTS default_shift_start TIME,
+                ADD COLUMN IF NOT EXISTS default_shift_end TIME;
+            """)
 
             # 2. Users Table
             await conn.execute("""
