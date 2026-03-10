@@ -333,8 +333,14 @@ class DatabasePG:
             return [dict(row) for row in rows]
 
     async def get_latest_stock(self, company_id: int) -> List[Dict]:
-        """Получить самые свежие остатки по каждому товару"""
+        """Получить самые свежие остатки по каждому товару. Если товар пропущен в последней ревизии, считаем его равным 0."""
         async with self.pool.acquire() as conn:
+            # Получаем дату самой последней ревизии по всей компании
+            global_latest = await conn.fetchval("SELECT MAX(date) FROM stock WHERE company_id = $1", company_id)
+            if not global_latest:
+                from datetime import date
+                global_latest = date.today()
+
             rows = await conn.fetch("""
                 WITH RankedStock AS (
                     SELECT product_id, quantity, weight, date,
@@ -342,14 +348,17 @@ class DatabasePG:
                     FROM stock
                     WHERE company_id = $1
                 )
-                SELECT rs.product_id, rs.quantity, rs.weight, rs.date,
+                SELECT p.id as product_id, 
+                       CASE WHEN rs.date >= $2 THEN rs.quantity ELSE 0 END as quantity, 
+                       CASE WHEN rs.date >= $2 THEN rs.weight ELSE 0 END as weight,
+                       $2 as date,
                        p.name_chinese, p.name_russian, p.name_internal,
                        p.package_weight, p.units_per_box, p.box_weight, p.price_per_box, p.unit
-                FROM RankedStock rs
-                JOIN products p ON rs.product_id = p.id
-                WHERE rs.rn = 1 AND p.is_active = TRUE
+                FROM products p
+                LEFT JOIN RankedStock rs ON p.id = rs.product_id AND rs.rn = 1
+                WHERE p.company_id = $1 AND p.is_active = TRUE
                 ORDER BY p.name_internal
-            """, company_id)
+            """, company_id, global_latest)
             return [dict(row) for row in rows]
 
     async def has_stock_for_date(self, company_id: int, date) -> bool:
