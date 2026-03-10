@@ -47,7 +47,7 @@ async def main():
     await db.init_db()
 
     # Проверка и автоматический импорт данных если БД пустая
-    products_list = await db.get_all_products()
+    products_list = await db.get_all_products(company_id=1)
     if not products_list:
         logger.info("📦 БД пустая, запускаю автоматический импорт...")
         try:
@@ -57,7 +57,7 @@ async def main():
 
             if os.path.exists(csv_path):
                 logger.info("📦 Импорт товаров...")
-                imported_products = await import_products_from_csv(csv_path, db)
+                imported_products = await import_products_from_csv(csv_path, db, company_id=1)
                 logger.info(f"✅ Импортировано товаров: {imported_products}")
 
                 logger.info("📊 Импорт остатков...")

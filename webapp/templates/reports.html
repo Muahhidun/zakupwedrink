@@ -117,6 +117,44 @@
             </div>
         </div>
     </div>
+
+    <!-- Advanced Analytics (ABC & Cost) -->
+    <div
+        style="display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 32px; margin-bottom: 32px;">
+        <div class="report-section" style="margin-bottom: 0;">
+            <div class="section-header">
+                <h2 style="font-size: 20px; font-weight: 600;">Куда уходят деньги (30 дн)</h2>
+            </div>
+            <div class="card" style="display: flex; justify-content: center; align-items: center; min-height: 300px;">
+                <canvas id="costPieChart" style="max-height: 300px; width: 100%;"></canvas>
+            </div>
+        </div>
+
+        <div class="report-section" style="margin-bottom: 0;">
+            <div class="section-header">
+                <h2 style="font-size: 20px; font-weight: 600;">ABC Анализ (30 дн)</h2>
+                <span style="font-size: 13px; color: var(--text-tertiary);" id="abcRange">Загрузка...</span>
+            </div>
+            <div class="card" style="padding: 0; overflow: hidden; max-height: 400px; overflow-y: auto;">
+                <table class="table" id="abcTable">
+                    <thead>
+                        <tr>
+                            <th>Товар</th>
+                            <th style="text-align: right;">Затраты</th>
+                            <th style="text-align: center;">Класс</th>
+                        </tr>
+                    </thead>
+                    <tbody id="abcTableBody">
+                        <tr>
+                            <td colspan="3" style="text-align: center; padding: 32px;"><span
+                                    class="material-symbols-rounded"
+                                    style="animation: spin 1s linear infinite;">sync</span></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
 </div>
 {% endblock %}
 
@@ -128,6 +166,7 @@
 
         loadSummary();
         loadDailyReport();
+        loadAdvancedReport();
     });
 
     async function loadSummary() {
@@ -199,6 +238,128 @@
             console.error('Error loading daily report:', e);
             tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; color: var(--danger); padding: 32px;">Ошибка загрузки</td></tr>';
         }
+    }
+
+    let costChart = null;
+
+    async function loadAdvancedReport() {
+        try {
+            const res = await fetch('/api/reports/advanced');
+            const data = await res.json();
+            
+            if (!data.consumption || data.consumption.length === 0) {
+                document.getElementById('abcRange').textContent = 'Нет данных';
+                document.getElementById('abcTableBody').innerHTML = '<tr><td colspan="3" style="text-align: center; padding: 20px;">Недостаточно данных</td></tr>';
+                return;
+            }
+
+            document.getElementById('abcRange').textContent = `${data.start_date} — ${data.end_date}`;
+            
+            const items = data.consumption.filter(i => (i.total_cost || 0) > 0)
+                                          .sort((a, b) => b.total_cost - a.total_cost);
+            
+            const totalCostSum = items.reduce((sum, item) => sum + item.total_cost, 0);
+            
+            const tbody = document.getElementById('abcTableBody');
+            tbody.innerHTML = '';
+            
+            let cumulative = 0;
+            const top5Labels = [];
+            const top5Data = [];
+            
+            items.forEach((item, index) => {
+                const name = item.name_russian || item.name_internal || 'Неизвестно';
+                const cost = item.total_cost;
+                cumulative += cost;
+                
+                const percent = (cumulative / totalCostSum) * 100;
+                let abcClass = 'C';
+                let color = 'var(--text-tertiary)';
+                let bg = 'var(--bg-lighter)';
+                
+                if (percent <= 80) {
+                    abcClass = 'A';
+                    color = 'var(--primary)';
+                    bg = 'rgba(74, 108, 247, 0.1)';
+                } else if (percent <= 95) {
+                    abcClass = 'B';
+                    color = 'var(--warning)';
+                    bg = 'rgba(245, 158, 11, 0.1)';
+                }
+                
+                if (index < 5) {
+                    top5Labels.push(name);
+                    top5Data.push(cost);
+                } else if (index === 5) {
+                    top5Labels.push('Остальное');
+                    top5Data.push(0);
+                }
+                if (index >= 5) {
+                    top5Data[5] += cost;
+                }
+                
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td style="font-weight: 500; font-size: 14px;">${name}</td>
+                    <td style="text-align: right; font-variant-numeric: tabular-nums;">${new Intl.NumberFormat('ru-RU').format(Math.round(cost))} ₸</td>
+                    <td style="text-align: center;">
+                        <span style="display: inline-block; padding: 2px 8px; border-radius: 4px; background: ${bg}; color: ${color}; font-weight: 700;">${abcClass}</span>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+            
+            renderCostChart(top5Labels, top5Data);
+            
+        } catch(e) {
+            console.error('Ошибка расширенной аналитики', e);
+        }
+    }
+    
+    function renderCostChart(labels, data) {
+        const ctx = document.getElementById('costPieChart').getContext('2d');
+        if (costChart) costChart.destroy();
+        
+        costChart = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: labels,
+                datasets: [{
+                    data: data,
+                    backgroundColor: [
+                        '#4A6CF7', '#F59E0B', '#10B981', '#EC4899', '#8B5CF6', '#9CA3AF'
+                    ],
+                    borderWidth: 0,
+                    hoverOffset: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'right',
+                        labels: {
+                            color: getComputedStyle(document.documentElement).getPropertyValue('--text-primary'),
+                            usePointStyle: true,
+                            font: { family: "'Inter', sans-serif" }
+                        }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                let label = context.label || '';
+                                if (label) label += ': ';
+                                if (context.parsed !== null) {
+                                    label += new Intl.NumberFormat('ru-RU').format(Math.round(context.parsed)) + ' ₸';
+                                }
+                                return label;
+                            }
+                        }
+                    }
+                }
+            }
+        });
     }
 </script>
 {% endblock %}

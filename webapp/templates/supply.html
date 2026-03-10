@@ -7,18 +7,19 @@
 {% block extra_css %}
 <style>
     .supply-container {
-        max-width: 800px;
+        max-width: 1200px;
         margin: 0 auto;
     }
 
-    .supply-header {
+    .page-header {
         display: flex;
-        justify-content: space-between;
+        justify-content: flex-end;
         align-items: center;
         margin-bottom: 24px;
         flex-wrap: wrap;
         gap: 16px;
     }
+
 
     .product-row {
         display: grid;
@@ -75,15 +76,16 @@
 
 {% block content %}
 <div class="supply-container fade-in-up">
-    <div class="supply-header">
-        <div class="form-group" style="margin-bottom: 0;">
-            <label class="form-label" for="supplyDate">Дата поставки</label>
-            <input type="date" id="supplyDate" class="form-control">
+    <div class="page-header">
+        <div style="display: flex; align-items: center; gap: 16px;">
+            <div class="form-group" style="margin-bottom: 0;">
+                <input type="date" id="supplyDate" class="form-control" title="Дата поставки">
+            </div>
+            <button class="btn btn-primary" onclick="submitSupply()">
+                <span class="material-symbols-rounded">save</span>
+                Сохранить поставку
+            </button>
         </div>
-        <button class="btn btn-primary" onclick="submitSupply()">
-            <span class="material-symbols-rounded">save</span>
-            Сохранить поставку
-        </button>
     </div>
 
     <div class="card" style="padding: 0;">
@@ -119,7 +121,8 @@
             <select class="form-control product-select" onchange="updateTotal()">
                 <option value="">Выберите товар...</option>
                 {% for p in products %}
-                <option value="{{p.id}}" data-price="{{p.price_per_box}}">{{p.name_internal}}</option>
+                <option value="{{p.id}}" data-price="{{p.price_per_box}}" data-weight="{{p.package_weight}}"
+                    data-unit="{{p.unit}}" data-unitsperbox="{{p.units_per_box}}">{{p.name_internal}}</option>
                 {% endfor %}
             </select>
         </div>
@@ -171,7 +174,7 @@
         const row = document.createElement('div');
         row.className = 'product-row';
 
-        let options = products.map(p => `<option value="${p.id}" data-price="${p.price_per_box}" data-weight="${p.package_weight}">${p.name_internal}</option>`).join('');
+        let options = products.map(p => `<option value="${p.id}" data-price="${p.price_per_box}" data-weight="${p.package_weight}" data-unit="${p.unit}" data-unitsperbox="${p.units_per_box}">${p.name_internal}</option>`).join('');
 
         row.innerHTML = `
             <div class="product-name">
@@ -215,11 +218,20 @@
         if (opt && opt.value) {
             const price = parseFloat(opt.dataset.price || 0);
             const packageWeight = parseFloat(opt.dataset.weight || 1);
+            const unit = opt.dataset.unit || 'кг';
+            const unitsPerBox = parseFloat(opt.dataset.unitsperbox || 1);
             const boxes = parseFloat(input.value || 0);
 
             // Auto-calculate weight and cost
             if (boxes > 0) {
-                row.querySelector('.weight-input').value = (boxes * packageWeight).toFixed(1);
+                if (unit === 'шт') {
+                    // Если товар в штуках, количество в базу заносится в штуках
+                    row.querySelector('.weight-input').value = (boxes * unitsPerBox).toFixed(0);
+                } else {
+                    // Иначе обычные килограммы или литры
+                    row.querySelector('.weight-input').value = (boxes * packageWeight).toFixed(1);
+                }
+
                 row.querySelector('.cost-input').value = (boxes * price).toFixed(0);
             }
         }

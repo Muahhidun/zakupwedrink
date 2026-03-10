@@ -1,0 +1,389 @@
+{% extends "layout.html" %}
+
+{% block title %}Франшизы | WeDrink{% endblock %}
+{% block page_title %}Управление Франшизами{% endblock %}
+
+{% block content %}
+<div class="fade-in-up">
+    <!-- Header Area -->
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 32px;">
+        <div>
+            <h2 style="font-size: 24px; font-weight: 700; color: var(--text-primary); margin-bottom: 4px;">Платформа
+                WeDrink</h2>
+            <p style="color: var(--text-secondary); font-size: 14px; margin: 0;">Super-Admin Dashboard</p>
+        </div>
+        <button class="btn btn-primary" onclick="showNewCompanyModal()">
+            <span class="material-symbols-rounded">add</span> Новая компания
+        </button>
+    </div>
+
+    <!-- Общая статистика -->
+    <div
+        style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px; margin-bottom: 32px;">
+        <div class="card" style="display: flex; flex-direction: column;">
+            <div style="color: var(--text-secondary); font-size: 14px; margin-bottom: 16px;">Всего компаний</div>
+            <div style="font-size: 32px; font-weight: 700; color: var(--text-primary);">{{ total_companies }}</div>
+        </div>
+        <div class="card" style="display: flex; flex-direction: column;">
+            <div style="color: var(--text-secondary); font-size: 14px; margin-bottom: 16px;">Активные</div>
+            <div style="font-size: 32px; font-weight: 700; color: var(--secondary);">{{ active_companies }}</div>
+        </div>
+        <div class="card" style="display: flex; flex-direction: column;">
+            <div style="color: var(--text-secondary); font-size: 14px; margin-bottom: 16px;">Всего пользователей</div>
+            <div style="font-size: 32px; font-weight: 700; color: var(--primary);">{{ total_users }}</div>
+        </div>
+    </div>
+
+    <!-- Таблица компаний -->
+    <div class="card" style="padding: 0; overflow: hidden;">
+        <div style="padding: 24px; border-bottom: 1px solid var(--border-color);">
+            <h3 style="margin: 0; font-size: 16px;">Зарегистрированные компании</h3>
+        </div>
+
+        <div class="table-container">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th style="width: 60px;">ID</th>
+                        <th>Название</th>
+                        <th style="text-align: center;">Статус подписки</th>
+                        <th>До (Дата)</th>
+                        <th style="text-align: center;">Сотрудников</th>
+                        <th>Владелец</th>
+                        <th style="text-align: right; padding-right: 24px;">Действия</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for company in companies %}
+                    <tr>
+                        <td style="color: var(--text-secondary);">{{ company.id }}</td>
+                        <td style="font-weight: 600; color: var(--text-primary);">{{ company.name }}</td>
+                        <td style="text-align: center;">
+                            {% if company.subscription_status == 'active' %}
+                            <span class="badge success">Активна</span>
+                            {% elif company.subscription_status == 'trial' %}
+                            <span class="badge warning">Trial</span>
+                            {% else %}
+                            <span class="badge danger">Заблокирована</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if company.subscription_ends_at %}
+                            {{ company.subscription_ends_at.strftime('%d.%m.%Y') }}
+                            {% else %}
+                            <span style="color: var(--text-tertiary);">Неограниченно</span>
+                            {% endif %}
+                        </td>
+                        <td style="text-align: center;">{{ company.user_count }}</td>
+                        <td>
+                            {% if company.owner_username %}
+                            <span style="color: var(--primary); font-weight: 500;">@{{ company.owner_username }}</span>
+                            {% else %}
+                            <span style="color: var(--text-tertiary);">Нет</span>
+                            {% endif %}
+                        </td>
+                        <td style="text-align: right; padding-right: 24px;">
+                            <div style="display: inline-flex; gap: 8px;">
+                                <button class="btn"
+                                    style="padding: 6px 10px; background: var(--bg-surface-hover); color: var(--text-secondary);"
+                                    title="Настройки"
+                                    onclick="showCompanySettingsModal({{ company.id }}, '{{ company.subscription_status }}')">
+                                    <span class="material-symbols-rounded" style="font-size: 18px;">settings</span>
+                                </button>
+                                <button class="btn"
+                                    style="padding: 6px 10px; background: var(--primary-light); color: var(--primary);"
+                                    title="Сгенерировать инвайт для владельца"
+                                    onclick="generateInvite({{ company.id }}, 'admin')">
+                                    <span class="material-symbols-rounded" style="font-size: 18px;">link</span>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="7" style="text-align: center; padding: 48px 24px; color: var(--text-tertiary);">
+                            <span class="material-symbols-rounded"
+                                style="font-size: 48px; opacity: 0.5; margin-bottom: 12px; display: block;">domain_disabled</span>
+                            Нет зарегистрированных франшиз
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Custom Vanilla JS Modal -->
+<div id="newCompanyModal"
+    style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 1000; align-items: center; justify-content: center;">
+    <div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px);"
+        onclick="hideNewCompanyModal()"></div>
+    <div class="card fade-in-up" id="modalCard1"
+        style="position: relative; width: 90%; max-width: 500px; padding: 0; z-index: 1001; margin: 0;">
+        <div
+            style="padding: 24px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center;">
+            <h3 style="margin: 0; font-size: 18px;">Создать новую компанию</h3>
+            <button class="btn" onclick="hideNewCompanyModal()"
+                style="padding: 4px; background: transparent; color: var(--text-tertiary);">
+                <span class="material-symbols-rounded">close</span>
+            </button>
+        </div>
+        <div style="padding: 24px;">
+            <div class="form-group" style="margin-bottom: 24px;">
+                <label
+                    style="display: block; font-size: 13px; color: var(--text-secondary); margin-bottom: 8px;">Название
+                    компании (ИП / Точка)</label>
+                <input type="text" id="companyName"
+                    style="width: 100%; padding: 12px 16px; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--bg-surface); color: var(--text-primary); font-family: inherit; font-size: 15px;"
+                    placeholder="Например, Кофейня WeDrink Абая">
+            </div>
+
+            <div id="inviteResultArea"
+                style="display: none; margin-top: 24px; padding: 16px; background: var(--success-light); border-radius: var(--radius-md); border: 1px solid rgba(46, 204, 113, 0.2);">
+                <h4
+                    style="color: var(--secondary); margin-top: 0; margin-bottom: 12px; font-size: 15px; display: flex; align-items: center; gap: 8px;">
+                    <span class="material-symbols-rounded" style="font-size: 20px;">check_circle</span>
+                    Приглашение сгенерировано!
+                </h4>
+                <p style="font-size: 13px; color: var(--secondary); margin-bottom: 16px; line-height: 1.5;">Отправьте
+                    эту ссылку Владельцу (Управляющему) новой точки. После перехода по ней он навсегда привяжется к этой
+                    компании с правами admin.</p>
+
+                <div style="display: flex; gap: 8px;">
+                    <input type="text" id="inviteLinkInput" readonly
+                        style="flex: 1; padding: 10px 14px; border: 1px solid rgba(46, 204, 113, 0.3); border-radius: var(--radius-md); background: white; color: var(--text-primary); font-family: monospace; font-size: 13px;">
+                    <button class="btn btn-primary" onclick="copyInviteLink()"
+                        style="padding: 10px 16px; background: var(--secondary); border: none;">
+                        <span class="material-symbols-rounded" style="font-size: 18px;">content_copy</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div
+            style="padding: 16px 24px; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 12px; background: var(--bg-surface-hover);">
+            <button class="btn" style="background: white; border: 1px solid var(--border-color);"
+                onclick="hideNewCompanyModal()" id="btnCancel">Отмена</button>
+            <button class="btn btn-primary" id="btnCreateCompany" onclick="createCompany()">Создать и получить
+                ссылку</button>
+            <button class="btn btn-success" id="btnDone"
+                style="display: none; background: var(--secondary); border: none;"
+                onclick="window.location.reload()">Готово</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Settings (Subscription & Delete) -->
+<div id="companySettingsModal"
+    style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 1000; align-items: center; justify-content: center;">
+    <div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px);"
+        onclick="hideCompanySettingsModal()"></div>
+    <div class="card fade-in-up"
+        style="position: relative; width: 90%; max-width: 500px; padding: 0; z-index: 1001; margin: 0;">
+        <div
+            style="padding: 24px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center;">
+            <h3 style="margin: 0; font-size: 18px;">Настройки компании <span id="settingsCompanyId"
+                    style="color: var(--text-tertiary);"></span></h3>
+            <button class="btn" onclick="hideCompanySettingsModal()"
+                style="padding: 4px; background: transparent; color: var(--text-tertiary);">
+                <span class="material-symbols-rounded">close</span>
+            </button>
+        </div>
+        <div style="padding: 24px;">
+            <div class="form-group" style="margin-bottom: 20px;">
+                <label style="display: block; font-size: 13px; color: var(--text-secondary); margin-bottom: 8px;">Статус
+                    подписки</label>
+                <select id="companyStatusSelect" class="form-control" style="width: 100%;">
+                    <option value="active">Активна (Оплачена)</option>
+                    <option value="trial">Trial (Ознакомительный период)</option>
+                    <option value="blocked">Заблокирована</option>
+                </select>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 24px;">
+                <label
+                    style="display: block; font-size: 13px; color: var(--text-secondary); margin-bottom: 8px;">Продлить
+                    подписку на (дни)</label>
+                <input type="number" id="companyDaysToAdd" class="form-control" placeholder="Например: 14 или 30"
+                    style="width: 100%;">
+                <p style="font-size: 12px; color: var(--text-tertiary); margin-top: 4px; margin-bottom: 0;">Оставьте
+                    пустым, если не нужно продлевать. Текущая дата + это число.</p>
+            </div>
+
+            <div style="padding-top: 24px; border-top: 1px solid var(--border-color); margin-top: 24px;">
+                <h4 style="margin-top: 0; font-size: 14px; color: var(--danger); margin-bottom: 12px;">Опасная зона</h4>
+                <button class="btn btn-danger" style="width: 100%; display: flex; justify-content: center; gap: 8px;"
+                    onclick="deleteCompany()">
+                    <span class="material-symbols-rounded" style="font-size: 18px;">delete_forever</span>
+                    Удалить компанию и все ее данные
+                </button>
+            </div>
+        </div>
+        <div
+            style="padding: 16px 24px; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 12px; background: var(--bg-surface-hover);">
+            <button class="btn" style="background: white; border: 1px solid var(--border-color);"
+                onclick="hideCompanySettingsModal()">Отмена</button>
+            <button class="btn btn-primary" onclick="saveCompanySettings()">Сохранить изменения</button>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function showNewCompanyModal() {
+        document.getElementById('newCompanyModal').style.display = 'flex';
+        document.getElementById('companyName').value = '';
+        document.getElementById('inviteResultArea').style.display = 'none';
+
+        document.getElementById('btnCreateCompany').style.display = 'block';
+        document.getElementById('btnCancel').style.display = 'block';
+        document.getElementById('btnDone').style.display = 'none';
+        document.getElementById('companyName').disabled = false;
+    }
+
+    function hideNewCompanyModal() {
+        if (document.getElementById('btnDone').style.display === 'block') {
+            window.location.reload();
+        } else {
+            document.getElementById('newCompanyModal').style.display = 'none';
+        }
+    }
+
+    async function createCompany() {
+        const name = document.getElementById('companyName').value;
+        if (!name) {
+            alert('Введите название компании');
+            return;
+        }
+
+        const btn = document.getElementById('btnCreateCompany');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="material-symbols-rounded fa-spin">refresh</span> Загрузка...';
+
+        try {
+            const response = await fetch('/api/superadmin/companies', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ name: name })
+            });
+
+            const data = await response.json();
+
+            if (response.ok && data.success) {
+                // Show result
+                document.getElementById('inviteResultArea').style.display = 'block';
+                document.getElementById('inviteLinkInput').value = data.invite_url;
+                document.getElementById('companyName').disabled = true;
+
+                // Toggle buttons
+                btn.style.display = 'none';
+                document.getElementById('btnCancel').style.display = 'none';
+                document.getElementById('btnDone').style.display = 'block';
+            } else {
+                alert('Ошибка: ' + (data.error || 'Неизвестная ошибка'));
+                btn.disabled = false;
+                btn.innerHTML = 'Создать и получить ссылку';
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Сетевая ошибка при создании компании');
+            btn.disabled = false;
+            btn.innerHTML = 'Создать и получить ссылку';
+        }
+    }
+
+    function copyInviteLink() {
+        const copyText = document.getElementById("inviteLinkInput");
+        copyText.select();
+        copyText.setSelectionRange(0, 99999);
+        navigator.clipboard.writeText(copyText.value);
+
+        alert("Ссылка скопирована!");
+    }
+
+    function generateInvite(companyId, role) {
+        alert('Функция генерации инвайта для существующей компании в разработке.');
+    }
+
+    // --- Settings Modal Logic ---
+    let currentSettingsCompanyId = null;
+
+    function showCompanySettingsModal(companyId, currentStatus) {
+        currentSettingsCompanyId = companyId;
+        document.getElementById('settingsCompanyId').textContent = '#' + companyId;
+
+        const statusSelect = document.getElementById('companyStatusSelect');
+        for (let i = 0; i < statusSelect.options.length; i++) {
+            if (statusSelect.options[i].value === currentStatus) {
+                statusSelect.selectedIndex = i;
+                break;
+            }
+        }
+
+        document.getElementById('companyDaysToAdd').value = '';
+        document.getElementById('companySettingsModal').style.display = 'flex';
+    }
+
+    function hideCompanySettingsModal() {
+        document.getElementById('companySettingsModal').style.display = 'none';
+        currentSettingsCompanyId = null;
+    }
+
+    async function saveCompanySettings() {
+        if (!currentSettingsCompanyId) return;
+
+        const status = document.getElementById('companyStatusSelect').value;
+        const daysToAddRaw = document.getElementById('companyDaysToAdd').value;
+        const daysToAdd = daysToAddRaw ? parseInt(daysToAddRaw, 10) : null;
+
+        try {
+            const response = await fetch(`/api/superadmin/companies/${currentSettingsCompanyId}/subscription`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: status, days_to_add: daysToAdd })
+            });
+
+            const data = await response.json();
+            if (response.ok && data.success) {
+                window.location.reload();
+            } else {
+                alert('Ошибка: ' + (data.error || 'Неизвестная ошибка'));
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Сетевая ошибка при сохранении');
+        }
+    }
+
+    async function deleteCompany() {
+        if (!currentSettingsCompanyId) return;
+
+        const confirmText = prompt(`ВНИМАНИЕ! Это действие необратимо удалит компанию #${currentSettingsCompanyId} и ВСЕ связанные с ней данные (товары, остатки, юзеров). Введите "УДАЛИТЬ" для подтверждения:`);
+
+        if (confirmText !== "УДАЛИТЬ") {
+            alert("Удаление отменено.");
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/superadmin/companies/${currentSettingsCompanyId}`, {
+                method: 'DELETE'
+            });
+
+            const data = await response.json();
+            if (response.ok && data.success) {
+                window.location.reload();
+            } else {
+                alert('Ошибка: ' + (data.error || 'Неизвестная ошибка'));
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Сетевая ошибка при удалении');
+        }
+    }
+</script>
+{% endblock %}

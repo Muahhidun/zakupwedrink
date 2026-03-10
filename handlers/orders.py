@@ -27,21 +27,24 @@ class OrderStates(StatesGroup):
     waiting_for_manual_order_boxes = State()
 
 
-async def prepare_order_data(db: Database, lookback_days: int = 30):
+async def prepare_order_data(db, company_id=1, lookback_days: int = 30):
     """Подготовить данные для формирования заказа с учетом товаров в пути"""
-    stock = await db.get_latest_stock()
+    stock = await db.get_latest_stock(company_id) if hasattr(db, 'pool') else await db.get_latest_stock()
     enriched_stock = []
 
     for item in stock:
         # Получаем историю остатков за последние `lookback_days` дней для стабильного среднего
-        history = await db.get_stock_history(item['product_id'], days=lookback_days)
-        supplies = await db.get_supply_history(item['product_id'], days=lookback_days)
+        if hasattr(db, 'pool'):
+            history = await db.get_stock_history(company_id, item['product_id'], days=lookback_days)
+            supplies = await db.get_supply_history(company_id, item['product_id'], days=lookback_days)
+            pending_weight = await db.get_pending_weight_for_product(company_id, item['product_id'])
+        else:
+            history = await db.get_stock_history(item['product_id'], days=lookback_days)
+            supplies = await db.get_supply_history(item['product_id'], days=lookback_days)
+            pending_weight = await db.get_pending_weight_for_product(item['product_id'])
 
         # Рассчитываем средний расход с учетом поставок
         avg_consumption, days_with_data, warning = calculate_average_consumption(history, supplies)
-
-        # Получаем вес товара в активных заказах (в пути)
-        pending_weight = await db.get_pending_weight_for_product(item['product_id'])
 
         enriched_stock.append({
             **item,
@@ -58,7 +61,8 @@ async def generate_order(message: Message, db: Database, days: int,
     """Универсальная функция генерации заказа"""
     await message.answer("⏳ Рассчитываю заказ с учетом товаров в пути...")
 
-    stock_data = await prepare_order_data(db)
+    company_id = 1 # Temporary default for multi-tenant structure
+    stock_data = await prepare_order_data(db, company_id=company_id)
     products_to_order = get_products_to_order(
         stock_data,
         days_threshold=threshold,
@@ -407,7 +411,8 @@ async def cmd_test_auto_order(message: Message, db: Database):
         from utils.calculations import get_auto_order_with_threshold, format_auto_order_list
 
         # Подготавливаем данные
-        stock_data = await prepare_order_data(db)
+        company_id = 1
+        stock_data = await prepare_order_data(db, company_id=company_id)
 
         # Получаем заказ с порогом
         products_to_order, total_cost, should_notify = get_auto_order_with_threshold(
@@ -531,7 +536,11 @@ async def process_manual_order_boxes(message: Message, state: FSMContext, db: Da
         product = data['selected_product']
 
         # Рассчитываем вес и стоимость
-        weight = boxes * product['box_weight']
+        if product.get('unit') == 'шт':
+            weight = boxes * float(product.get('units_per_box', 1))
+        else:
+            weight = boxes * float(product['box_weight'])
+            
         cost = boxes * product['price_per_box']
 
         # Создаем заказ в БД
@@ -547,10 +556,14 @@ async def process_manual_order_boxes(message: Message, state: FSMContext, db: Da
             cost=cost
         )
 
+        # Определяем отображаемую единицу и значение для сообщения
+        display_weight_metric = product.get('units_per_box', 1) if product.get('unit') == 'шт' else product['box_weight']
+        display_weight_fmt = f"{weight:.0f}" if product.get('unit') == 'шт' else f"{weight:.1f}"
+
         await message.answer(
             f"✅ <b>Заказ #{order_id} добавлен в пути!</b>\n\n"
             f"📦 {product['name_russian']}\n"
-            f"   {boxes} коробок × {product['box_weight']} {product['unit']} = {weight:.1f} {product['unit']}\n"
+            f"   {boxes} коробок × {display_weight_metric} {product['unit']} = {display_weight_fmt} {product['unit']}\n"
             f"💰 Стоимость: {cost:,.0f}₸\n\n"
             f"Теперь бот будет учитывать этот заказ при расчете закупа.",
             parse_mode="HTML",

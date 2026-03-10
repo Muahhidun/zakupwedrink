@@ -6,6 +6,11 @@
 
 {% block extra_css %}
 <style>
+    .submissions-container {
+        max-width: 1200px;
+        margin: 0 auto;
+    }
+
     .submissions-header {
         display: flex;
         justify-content: space-between;
@@ -164,38 +169,42 @@
 {% endblock %}
 
 {% block content %}
-<div class="submissions-header">
-    <h2 class="section-title">Заявки на остатки</h2>
-    <div style="display: flex; gap: 12px;">
-        <button class="btn btn-primary" onclick="loadSubmissions()">
-            <span class="material-symbols-rounded">refresh</span>
-            Обновить
-        </button>
+<div class="submissions-container">
+    <div class="submissions-header">
+        <h2 class="section-title">Заявки на остатки</h2>
+        <div style="display: flex; gap: 12px;">
+            <button class="btn btn-primary" onclick="loadSubmissions()">
+                <span class="material-symbols-rounded">refresh</span>
+                Обновить
+            </button>
+        </div>
+    </div>
+
+    <div class="card" style="padding: 0; overflow: hidden;">
+        <div class="table-container">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th style="width: 80px;">ID</th>
+                        <th>Дата остатков</th>
+                        <th>Создал</th>
+                        <th>Статус</th>
+                        <th>Отправлено</th>
+                        <th style="text-align: right;">Действия</th>
+                    </tr>
+                </thead>
+                <tbody id="submissionsTableBody">
+                    <tr>
+                        <td colspan="6" style="text-align: center; padding: 32px;"><span
+                                class="material-symbols-rounded"
+                                style="animation: spin 1s linear infinite; vertical-align: middle;">sync</span> Загрузка
+                            данных...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
     </div>
 </div>
-
-<div class="card" style="padding: 0; overflow: hidden;">
-    <div class="table-container">
-        <table class="table">
-            <thead>
-                <tr>
-                    <th style="width: 80px;">ID</th>
-                    <th>Дата остатков</th>
-                    <th>Создал</th>
-                    <th>Статус</th>
-                    <th>Отправлено</th>
-                    <th style="text-align: right;">Действия</th>
-                </tr>
-            </thead>
-            <tbody id="submissionsTableBody">
-                <tr>
-                    <td colspan="6" style="text-align: center; padding: 32px;"><span class="material-symbols-rounded"
-                            style="animation: spin 1s linear infinite; vertical-align: middle;">sync</span> Загрузка
-                        данных...</td>
-                </tr>
-            </tbody>
-        </table>
-    </div>
 </div>
 
 <!-- Reject Modal -->
@@ -223,11 +232,10 @@
     async function loadSubmissions() {
         const tbody = document.getElementById('submissionsTableBody');
         tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 32px;"><span class="material-symbols-rounded" style="animation: spin 1s linear infinite; vertical-align: middle;">sync</span> Загрузка...</td></tr>';
-        
+
         try {
             const res = await fetch('/api/submissions');
             if (!res.ok) throw new Error('Ошибка сети');
-            
             const data = await res.json();
             submissions = data.submissions || [];
             renderTable();
@@ -249,7 +257,7 @@
 
         submissions.forEach(sub => {
             const tr = document.createElement('tr');
-            
+
             // Форматируем статус
             let statusBadge = '';
             if (sub.status === 'pending') {
@@ -262,11 +270,10 @@
 
             // Форматируем даты
             const subDate = new Date(sub.submission_date).toLocaleDateString('ru-RU');
-            
             let createdAt = '';
             if (sub.created_at) {
                 const cDate = new Date(sub.created_at);
-                createdAt = cDate.toLocaleDateString('ru-RU') + ' ' + cDate.toLocaleTimeString('ru-RU', {hour: '2-digit', minute:'2-digit'});
+                createdAt = cDate.toLocaleDateString('ru-RU') + ' ' + cDate.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
             }
 
             // Действия
@@ -317,7 +324,7 @@
 
     async function approveSubmission(id) {
         if (!confirm('Вы уверены, что хотите утвердить эти остатки?')) return;
-        
+
         try {
             const res = await fetch('/api/submission/approve', {
                 method: 'POST',
@@ -325,7 +332,7 @@
                 body: JSON.stringify({ submission_id: id })
             });
             const result = await res.json();
-            
+
             if (result.success) {
                 showToast(result.message, 'success');
                 loadSubmissions();
@@ -350,7 +357,7 @@
 
     document.getElementById('confirmRejectBtn').addEventListener('click', async () => {
         if (!currentRejectId) return;
-        
+
         const reason = document.getElementById('rejectReason').value.trim();
         if (!reason) {
             showToast('Укажите причину отклонения', 'warning');
@@ -366,13 +373,13 @@
             const res = await fetch('/api/submission/reject', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
+                body: JSON.stringify({
                     submission_id: currentRejectId,
                     reason: reason
                 })
             });
             const result = await res.json();
-            
+
             if (result.success) {
                 showToast(result.message, 'success');
                 closeRejectModal();
@@ -387,7 +394,6 @@
             btn.disabled = false;
         }
     });
-
     // Изменение клика на оверлей для закрытия модалки
     document.getElementById('rejectModal').addEventListener('click', (e) => {
         if (e.target.id === 'rejectModal') {

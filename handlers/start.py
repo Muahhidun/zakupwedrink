@@ -12,13 +12,67 @@ router = Router()
 @router.message(Command("start"))
 async def cmd_start(message: Message, db, user_role: str, is_admin: bool):
     """Приветствие и главное меню"""
-    # Регистрируем пользователя для рассылки напоминаний
-    await db.add_or_update_user(
-        user_id=message.from_user.id,
-        username=message.from_user.username,
-        first_name=message.from_user.first_name,
-        last_name=message.from_user.last_name
-    )
+    # Обработчик инвайт-ссылок (Onboarding новых франшиз)
+    # Формат: /start invite_bXlfc2VjcmV0X3Rva2Vu...
+    command_args = message.text.split()
+    if len(command_args) > 1 and command_args[1].startswith('invite_'):
+        invite_token = command_args[1].replace('invite_', '')
+        try:
+            import base64
+            import json
+            # Декодируем инвайт (токен base64 без padding)
+            padding_needed = (4 - len(invite_token) % 4) % 4
+            padded_token = invite_token + '=' * padding_needed
+            decoded_bytes = base64.urlsafe_b64decode(padded_token)
+            invite_data = json.loads(decoded_bytes.decode())
+            
+            target_company_id = invite_data.get('c')
+            target_role = invite_data.get('r', 'employee')
+            
+            if target_company_id:
+                # Проверяем не был ли пользователь удален из этой компании
+                user_info = await db.get_user_info(message.from_user.id)
+                if user_info and user_info.get('company_id') == target_company_id and user_info.get('is_active') == False:
+                    await message.answer("❌ Вы были удалены из этой базы и не можете присоединиться снова.")
+                    return
+
+                # Регистрируем пользователя сразу в нужной компании с нужной ролью
+                await db.add_or_update_user(
+                    user_id=message.from_user.id,
+                    username=message.from_user.username,
+                    first_name=message.from_user.first_name,
+                    last_name=message.from_user.last_name,
+                    company_id=target_company_id
+                )
+                await db.update_user_role(message.from_user.id, target_role)
+                
+                # Если это первый админ, копируем ему глобальные товары
+                if target_role == 'admin':
+                    await db.copy_global_products_to_company(target_company_id)
+                
+                await message.answer(
+                    f"🎉 <b>Добро пожаловать в WeDrink!</b>\n\n"
+                    f"Вы успешно присоединены к базе вашей франшизы.\n"
+                    f"Ваша роль: <b>{target_role.upper()}</b>\n\n"
+                    f"Теперь вы модете войти в Веб-Панель учета!",
+                    parse_mode="HTML"
+                )
+                # Переопределяем user_role для отрисовки правильного меню ниже
+                user_role = target_role
+                is_admin = (user_role in ['admin', 'superadmin'])
+                
+        except Exception as e:
+            print(f"Ошибка обработки инвайта: {e}")
+            await message.answer("❌ Ссылка-приглашение недействительна или устарела.")
+            
+    else:
+        # Стандартная регистрация (если нет инвайта, компания не меняется)
+        await db.add_or_update_user(
+            user_id=message.from_user.id,
+            username=message.from_user.username,
+            first_name=message.from_user.first_name,
+            last_name=message.from_user.last_name
+        )
 
     is_private = message.chat.type == 'private'
 
