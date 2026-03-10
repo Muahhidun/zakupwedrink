@@ -5,19 +5,19 @@
 {% block nav_orders %}active{% endblock %}
 
 {% block content %}
-<ul class="nav nav-tabs"
-    style="margin-bottom: 24px; border-bottom: 2px solid var(--border-color); display: flex; gap: 24px; list-style: none; padding: 0;">
-    <li class="nav-item">
-        <a class="nav-link active" id="tab-auto" href="#" onclick="switchTab('auto')"
-            style="text-decoration: none; color: var(--text-primary); font-weight: 600; padding-bottom: 12px; display: block; border-bottom: 3px solid var(--primary);">🤖
-            Автоматический смарт-заказ</a>
-    </li>
-    <li class="nav-item">
-        <a class="nav-link" id="tab-manual" href="#" onclick="switchTab('manual')"
-            style="text-decoration: none; color: var(--text-secondary); font-weight: 500; padding-bottom: 12px; display: block; border-bottom: 3px solid transparent;">✍️
-            Собрать вручную</a>
-    </li>
-</ul>
+<div
+    style="background: var(--bg-surface-hover); padding: 5px; border-radius: 12px; display: inline-flex; margin-bottom: 24px; border: 1px solid var(--border-color); box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);">
+    <button id="tab-auto" onclick="switchTab('auto')"
+        style="padding: 10px 24px; display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; color: var(--text-primary); background: var(--bg-surface); border: 1px solid rgba(0,0,0,0.05); border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.05); cursor: pointer; transition: all 0.2s ease;">
+        <span class="material-symbols-rounded" style="font-size: 18px; color: var(--primary);">smart_toy</span>
+        Автоматический смарт-заказ
+    </button>
+    <button id="tab-manual" onclick="switchTab('manual')"
+        style="padding: 10px 24px; display: flex; align-items: center; gap: 8px; font-weight: 500; font-size: 14px; color: var(--text-secondary); background: transparent; border: 1px solid transparent; border-radius: 8px; box-shadow: none; cursor: pointer; transition: all 0.2s ease;">
+        <span class="material-symbols-rounded" style="font-size: 18px;">draw</span>
+        Собрать вручную
+    </button>
+</div>
 
 <div class="fade-in-up" id="autoOrderSection">
     <div class="card" style="margin-bottom: 24px;">
@@ -170,20 +170,30 @@
     });
 
     function switchTab(tabId) {
-        document.getElementById('tab-auto').classList.remove('active');
-        document.getElementById('tab-auto').style.color = 'var(--text-secondary)';
-        document.getElementById('tab-auto').style.fontWeight = '500';
-        document.getElementById('tab-auto').style.borderBottomColor = 'transparent';
+        // Сброс обоих до "неактивного" состояния
+        const btnAuto = document.getElementById('tab-auto');
+        const btnManual = document.getElementById('tab-manual');
 
-        document.getElementById('tab-manual').classList.remove('active');
-        document.getElementById('tab-manual').style.color = 'var(--text-secondary)';
-        document.getElementById('tab-manual').style.fontWeight = '500';
-        document.getElementById('tab-manual').style.borderBottomColor = 'transparent';
+        [btnAuto, btnManual].forEach(btn => {
+            btn.style.fontWeight = '500';
+            btn.style.color = 'var(--text-secondary)';
+            btn.style.background = 'transparent';
+            btn.style.boxShadow = 'none';
+            btn.style.border = '1px solid transparent';
+            btn.querySelector('span').style.color = 'inherit';
+        });
 
-        document.getElementById(`tab-${tabId}`).classList.add('active');
-        document.getElementById(`tab-${tabId}`).style.color = 'var(--text-primary)';
-        document.getElementById(`tab-${tabId}`).style.fontWeight = '600';
-        document.getElementById(`tab-${tabId}`).style.borderBottomColor = 'var(--primary)';
+        // Активация выбранного
+        const activeBtn = document.getElementById(`tab-${tabId}`);
+        activeBtn.style.fontWeight = '600';
+        activeBtn.style.color = 'var(--text-primary)';
+        activeBtn.style.background = 'var(--bg-surface)';
+        activeBtn.style.boxShadow = '0 2px 6px rgba(0,0,0,0.05)';
+        activeBtn.style.border = '1px solid rgba(0,0,0,0.05)';
+
+        // Цвет иконки для активного состояния
+        if (tabId === 'auto') activeBtn.querySelector('span').style.color = 'var(--primary)';
+        if (tabId === 'manual') activeBtn.querySelector('span').style.color = 'var(--warning)';
 
         document.getElementById('autoOrderSection').style.display = tabId === 'auto' ? 'block' : 'none';
         document.getElementById('manualOrderSection').style.display = tabId === 'manual' ? 'block' : 'none';
