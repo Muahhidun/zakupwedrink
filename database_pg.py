@@ -252,7 +252,7 @@ class DatabasePG:
             await conn.execute("""
                 INSERT INTO stock (company_id, product_id, date, quantity, weight)
                 VALUES ($1, $2, $3, $4, $5)
-                ON CONFLICT(company_id, product_id, date)
+                ON CONFLICT(product_id, date)
                 DO UPDATE SET quantity=EXCLUDED.quantity, weight=EXCLUDED.weight
             """, company_id, product_id, date, quantity, weight)
 
@@ -734,7 +734,7 @@ class DatabasePG:
                     await conn.execute("""
                         INSERT INTO stock (company_id, product_id, date, quantity, weight)
                         VALUES ($1, $2, $3, $4, $5)
-                        ON CONFLICT(company_id, product_id, date) DO UPDATE 
+                        ON CONFLICT(product_id, date) DO UPDATE 
                         SET quantity=EXCLUDED.quantity, weight=EXCLUDED.weight
                     """, company_id, item['product_id'], date, qty, wgt)
                 
