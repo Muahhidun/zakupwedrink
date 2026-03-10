@@ -581,6 +581,17 @@ class DatabasePG:
             """, company_id)
             return [dict(r) for r in records]
 
+    async def get_archived_users_by_company(self, company_id: int) -> List[Dict]:
+        """Получить список всех удаленных сотрудников (неактивных)"""
+        async with self.pool.acquire() as conn:
+            records = await conn.fetch("""
+                SELECT id, username, first_name, last_name, real_name, role, is_active, created_at, last_seen
+                FROM users 
+                WHERE company_id = $1 AND is_active = FALSE
+                ORDER BY created_at DESC
+            """, company_id)
+            return [dict(r) for r in records]
+
     async def get_user_role(self, user_id: int) -> str:
         """Получить роль пользователя"""
         async with self.pool.acquire() as conn:
@@ -637,8 +648,18 @@ class DatabasePG:
         async with self.pool.acquire() as conn:
             result = await conn.execute("""
                 UPDATE users 
-                SET is_active = FALSE, role = 'user'
+                SET is_active = FALSE, role = 'employee'
                 WHERE id = $1 AND company_id = $2 AND role != 'superadmin'
+            """, user_id, company_id)
+            return result.endswith('1')
+
+    async def restore_user(self, user_id: int, company_id: int) -> bool:
+        """Восстановить пользователя обратно в штат (роль employee)"""
+        async with self.pool.acquire() as conn:
+            result = await conn.execute("""
+                UPDATE users 
+                SET is_active = TRUE, role = 'employee'
+                WHERE id = $1 AND company_id = $2
             """, user_id, company_id)
             return result.endswith('1')
 

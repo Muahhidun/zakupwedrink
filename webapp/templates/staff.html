@@ -156,6 +156,68 @@
         </table>
     </div>
 </div>
+
+{% if archived_staff and archived_staff|length > 0 %}
+<div class="card" style="padding: 0; overflow: hidden; margin-top: 24px;">
+    <div
+        style="padding: 24px; border-bottom: 1px solid var(--border-color); display: flex; align-items: center; gap: 8px;">
+        <span class="material-symbols-rounded" style="color: var(--text-secondary);">archive</span>
+        <h3 style="margin: 0; font-size: 16px; font-weight: 600; color: var(--text-secondary);">Архив сотрудников
+            (удаленные)</h3>
+    </div>
+    <div class="table-container">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Сотрудник</th>
+                    <th>Регистрация</th>
+                    <th>Последняя активность</th>
+                    <th>Действия</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for ast in archived_staff %}
+                <tr style="opacity: 0.8; background-color: var(--background-color);">
+                    <td>
+                        <div style="display: flex; align-items: center; justify-content: space-between;">
+                            <div>
+                                {% if ast.real_name %}
+                                <strong style="font-size: 1.1em; color: var(--text-color);">{{ ast.real_name }}</strong>
+                                <div style="color: var(--text-secondary); font-size: 0.85em;">
+                                    ТГ: {{ ast.first_name }} {{ ast.last_name or '' }} {% if ast.username %}(@{{
+                                    ast.username }}){% endif %}
+                                </div>
+                                {% else %}
+                                <strong style="color: var(--text-color);">{{ ast.first_name }} {{ ast.last_name or ''
+                                    }}</strong>
+                                {% if ast.username %}
+                                <div style="color: var(--text-secondary); font-size: 0.85em;">@{{ ast.username }}</div>
+                                {% endif %}
+                                {% endif %}
+                                <div style="color: var(--danger-color, #e74c3c); font-size: 0.85em; margin-top: 2px;">
+                                    Удален</div>
+                            </div>
+                        </div>
+                    </td>
+                    <td>{{ ast.created_at.strftime('%d.%m.%Y') if ast.created_at else 'N/A' }}</td>
+                    <td>{{ ast.last_seen.strftime('%d.%m.%Y %H:%M') if ast.last_seen else 'N/A' }}</td>
+                    <td>
+                        {% if user.role in ['admin', 'superadmin'] %}
+                        <button class="btn btn-outline-primary btn-restore-staff" data-userid="{{ ast.id }}"
+                            data-username="{{ ast.real_name or ast.first_name }}"
+                            style="padding: 6px 12px; display: flex; align-items: center; gap: 4px; border-color: var(--primary-color); color: var(--primary-color);">
+                            <span class="material-symbols-rounded" style="font-size: 18px;">restore</span>
+                            Восстановить
+                        </button>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
 {% endblock %}
 
 {% block extra_js %}
@@ -335,7 +397,7 @@
                 const userId = target.dataset.userid;
                 const userName = target.dataset.username;
 
-                if (!confirm(`Вы действительно хотите удалить сотрудника ${userName}? Он потеряет доступ к базе и не сможет снова присоединиться.`)) {
+                if (!confirm(`Вы действительно хотите удалить сотрудника ${userName}? Он потеряет доступ к базе и будет отправлен в архив.`)) {
                     return;
                 }
 
@@ -362,6 +424,48 @@
                     alert('Ошибка сети');
                     target.disabled = false;
                     target.style.opacity = '1';
+                }
+            });
+        });
+
+        // Restore Staff Handler
+        const btnRestoreStaff = document.querySelectorAll('.btn-restore-staff');
+        btnRestoreStaff.forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                const target = e.currentTarget;
+                const userId = target.dataset.userid;
+                const userName = target.dataset.username;
+
+                if (!confirm(`Восстановить сотрудника ${userName}? Он снова получит возможность входить в систему и добавлять остатки.`)) {
+                    return;
+                }
+
+                target.disabled = true;
+                target.style.opacity = '0.5';
+                target.innerHTML = '<span class="material-symbols-rounded" style="animation: spin 1s linear infinite;">sync</span> Загрузка...';
+
+                try {
+                    const response = await fetch('/api/company/restore_staff', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ user_id: parseInt(userId) })
+                    });
+
+                    const data = await response.json();
+                    if (response.ok && data.success) {
+                        window.location.reload();
+                    } else {
+                        alert('Ошибка: ' + (data.error || 'Неизвестная ошибка'));
+                        target.disabled = false;
+                        target.style.opacity = '1';
+                        target.innerHTML = '<span class="material-symbols-rounded" style="font-size: 18px;">restore</span> Восстановить';
+                    }
+                } catch (error) {
+                    console.error('Error restoring staff:', error);
+                    alert('Ошибка сети');
+                    target.disabled = false;
+                    target.style.opacity = '1';
+                    target.innerHTML = '<span class="material-symbols-rounded" style="font-size: 18px;">restore</span> Восстановить';
                 }
             });
         });
