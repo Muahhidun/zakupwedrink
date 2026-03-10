@@ -434,8 +434,15 @@ class DatabasePG:
         async def fetch_consumption_for_period(days: int):
             start_date = latest_date - timedelta(days=days)
             real_start_date = await self.get_latest_date_before(company_id, start_date + timedelta(days=1))
+            
             if not real_start_date:
-                real_start_date = latest_date - timedelta(days=days)
+                # Если данных за этот период (e.g. 30 дней) еще нет (новая точка),
+                # берем самую ПЕРВУЮ доступную дату ревизии.
+                real_start_date = await self.get_earliest_stock_date(company_id)
+                # Если истории нет совсем или первая точка совпадает с текущей
+                if not real_start_date or real_start_date >= latest_date:
+                    return 1, {}
+            
             actual_days = (latest_date - real_start_date).days
             if actual_days <= 0:
                 actual_days = 1
@@ -511,6 +518,10 @@ class DatabasePG:
     async def get_latest_stock_date(self, company_id: int):
         async with self.pool.acquire() as conn:
             return await conn.fetchval("SELECT MAX(date) FROM stock WHERE company_id = $1", company_id)
+
+    async def get_earliest_stock_date(self, company_id: int):
+        async with self.pool.acquire() as conn:
+            return await conn.fetchval("SELECT MIN(date) FROM stock WHERE company_id = $1", company_id)
 
     async def get_total_stock_records(self, company_id: int) -> int:
         async with self.pool.acquire() as conn:
