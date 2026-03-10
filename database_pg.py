@@ -1098,6 +1098,8 @@ class DatabasePG:
             shift_id = await conn.fetchval("""
                 INSERT INTO shifts (company_id, user_id, date, start_time, end_time)
                 VALUES ($1, $2, $3, $4, $5)
+                ON CONFLICT (company_id, user_id, date) 
+                DO UPDATE SET start_time = EXCLUDED.start_time, end_time = EXCLUDED.end_time
                 RETURNING id
             """, company_id, user_id, date, parsed_start, parsed_end)
             return shift_id

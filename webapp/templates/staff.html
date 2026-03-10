@@ -158,14 +158,25 @@
 </div>
 
 {% if archived_staff and archived_staff|length > 0 %}
-<div class="card" style="padding: 0; overflow: hidden; margin-top: 24px;">
-    <div
-        style="padding: 24px; border-bottom: 1px solid var(--border-color); display: flex; align-items: center; gap: 8px;">
+<details class="card" style="padding: 0; overflow: hidden; margin-top: 24px;" id="archive-details">
+    <summary
+        style="padding: 16px 24px; display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; background-color: var(--background-color); list-style: none;">
+        <span class="material-symbols-rounded archive-expand-icon"
+            style="color: var(--text-secondary); transition: transform 0.2s;">expand_more</span>
         <span class="material-symbols-rounded" style="color: var(--text-secondary);">archive</span>
         <h3 style="margin: 0; font-size: 16px; font-weight: 600; color: var(--text-secondary);">Архив сотрудников
-            (удаленные)</h3>
-    </div>
-    <div class="table-container">
+            (удаленные) — {{ archived_staff|length }}</h3>
+    </summary>
+    <style>
+        #archive-details>summary::-webkit-details-marker {
+            display: none;
+        }
+
+        #archive-details[open] .archive-expand-icon {
+            transform: rotate(180deg);
+        }
+    </style>
+    <div class="table-container" style="border-top: 1px solid var(--border-color);">
         <table class="table">
             <thead>
                 <tr>
@@ -216,7 +227,7 @@
             </tbody>
         </table>
     </div>
-</div>
+</details>
 {% endif %}
 {% endblock %}
 
