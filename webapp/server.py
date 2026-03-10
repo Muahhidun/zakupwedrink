@@ -120,6 +120,9 @@ async def get_current_user(request):
                 role = user_info.get('role') if user_info else 'user'
                 company_id = user_info.get('company_id') if user_info else None
                 
+                if user_info and not user_info.get('is_active', True):
+                    return None
+                    
                 return {
                     'id': user_id,
                     'username': tg_user.get('username'),
@@ -127,13 +130,27 @@ async def get_current_user(request):
                     'last_name': tg_user.get('last_name'),
                     'photo_url': tg_user.get('photo_url'),
                     'role': role,
-                    'company_id': company_id
+                    'company_id': company_id,
+                    'is_active': user_info.get('is_active', True) if user_info else True
                 }
 
     # 2. Иначе проверяем Cookie сессию (для обычного браузера)
     session = await aiohttp_session.get_session(request)
     if 'user' in session:
-        return session['user']
+        user_data = session['user']
+        # Всегда перепроверяем статус активности в БД для безопасности
+        user_info = await db.get_user_info(user_data['id'])
+        if user_info and not user_info.get('is_active', True):
+            session.invalidate()
+            return None
+            
+        # Обновляем роль и компанию на случай если их изменили
+        if user_info:
+            user_data['role'] = user_info.get('role', user_data.get('role', 'user'))
+            user_data['company_id'] = user_info.get('company_id', user_data.get('company_id'))
+            session['user'] = user_data
+            
+        return user_data
     return None
 
 async def get_current_company(request):
@@ -266,6 +283,12 @@ async def telegram_login(request):
                 await conn.execute("UPDATE users SET company_id = 1 WHERE id = $1", user_id)
 
     user_info = await db.get_user_info(user_id)
+    
+    if user_info and not user_info.get('is_active', True):
+        # Если сотрудник удален (неактивен), запрещаем вход
+        print(f"❌ Error: Вход заблокирован для удаленного пользователя {user_id}")
+        raise web.HTTPFound('/login?error=inactive')
+        
     role = await db.get_user_role(user_id)
     company_id = user_info.get('company_id') if user_info and user_info.get('company_id') else 1
     
