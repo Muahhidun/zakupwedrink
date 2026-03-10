@@ -637,7 +637,7 @@ class DatabasePG:
         async with self.pool.acquire() as conn:
             result = await conn.execute("""
                 UPDATE users 
-                SET is_active = FALSE, role = 'removed'
+                SET is_active = FALSE, role = 'user'
                 WHERE id = $1 AND company_id = $2 AND role != 'superadmin'
             """, user_id, company_id)
             return result.endswith('1')
