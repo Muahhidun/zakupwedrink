@@ -1243,9 +1243,43 @@ async def send_order_telegram_api(request):
         if not bot:
              return safe_json_response({'error': 'Бот не инициализирован. Уведомление не отправлено.'}, status=500)
              
-        # Формируем официальное сообщение для поставщика
+        # 1. Сохраняем в базу как "Ожидающий приход"
+        try:
+            company_id = await get_current_company(request)
+            order_type = data.get('type', 'auto') 
+            notes = f"Автоматический смарт план на {days} дней" if order_type == 'auto' else "Ручной заказ через Web"
+            
+            # Создаем заказ
+            order_id = await db.create_pending_order(company_id, total_cost, notes)
+            
+            # Добавляем товары
+            # В items у нас должен быть product_id и box_weight. Иначе пропускаем.
+            for item in items:
+                product_id = item.get('product_id')
+                boxes = item.get('order_boxes', 0)
+                
+                if not product_id or boxes <= 0:
+                    continue
+                    
+                cost = item.get('item_total', 0)
+                box_weight = item.get('box_weight', 0)
+                units_per_box = item.get('units_per_box', 1) # Support for items by piece
+                
+                # Если товар в штуках (unit == 'шт'), то вес это просто кол-во штук = boxes * units_per_box
+                # Но так как мы не всегда знаем unit в этом объекте на 100%, 
+                # мы полагаемся на логику: если weight_ordered был передан, берем его. 
+                # Иначе считаем классический (коробки * вес коробки).
+                weight_ordered = boxes * box_weight
+                
+                await db.add_pending_order_item(order_id, product_id, boxes, weight_ordered, cost)
+                
+        except Exception as db_err:
+            print(f"Ошибка сохранения ожидающего заказа в БД: {db_err}")
+            # Мы не прерываем отправку в ТГ, если БД упала, но логируем.
+
+        # 2. Формируем официальное сообщение для поставщика
         message_lines = [
-            f"<b>Заявка на поставку (на {days} дней)</b>\n"
+            f"<b>Заявка на поставку ({notes})</b>\n"
         ]
         
         for item in items:

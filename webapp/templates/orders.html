@@ -5,7 +5,21 @@
 {% block nav_orders %}active{% endblock %}
 
 {% block content %}
-<div class="fade-in-up">
+<ul class="nav nav-tabs"
+    style="margin-bottom: 24px; border-bottom: 2px solid var(--border-color); display: flex; gap: 24px; list-style: none; padding: 0;">
+    <li class="nav-item">
+        <a class="nav-link active" id="tab-auto" href="#" onclick="switchTab('auto')"
+            style="text-decoration: none; color: var(--text-primary); font-weight: 600; padding-bottom: 12px; display: block; border-bottom: 3px solid var(--primary);">🤖
+            Автоматический смарт-заказ</a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link" id="tab-manual" href="#" onclick="switchTab('manual')"
+            style="text-decoration: none; color: var(--text-secondary); font-weight: 500; padding-bottom: 12px; display: block; border-bottom: 3px solid transparent;">✍️
+            Собрать вручную</a>
+    </li>
+</ul>
+
+<div class="fade-in-up" id="autoOrderSection">
     <div class="card" style="margin-bottom: 24px;">
         <h2 style="font-size: 16px; margin-bottom: 16px;">Параметры расчета</h2>
         <div style="display: flex; flex-direction: column; gap: 20px;">
@@ -75,15 +89,65 @@
 
         <div
             style="padding: 24px; background: var(--bg-surface-hover); border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 12px;">
-            <button class="btn" style="background: var(--info); color: white; border: none; display: flex; align-items: center; gap: 6px;" onclick="sendToTelegram()">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <button class="btn"
+                style="background: var(--info); color: white; border: none; display: flex; align-items: center; gap: 6px;"
+                onclick="sendToTelegram('auto')">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
                     <line x1="22" y1="2" x2="11" y2="13"></line>
                     <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
                 </svg>
                 Отправить в Telegram
             </button>
-            <button class="btn btn-success" onclick="approveOrder()">
-                <span class="material-symbols-rounded">check</span> Утвердить заказ
+        </div>
+    </div>
+</div>
+
+<div class="fade-in-up" id="manualOrderSection" style="display: none;">
+    <div class="card" style="padding: 0;">
+        <div
+            style="padding: 24px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: flex-end;">
+            <div>
+                <h3 style="margin-bottom: 4px;">Собственный список закупа</h3>
+                <div style="color: var(--text-secondary); font-size: 14px;">Выберите нужные товары, эти данные также
+                    попадут в Ожидающий приход</div>
+            </div>
+            <div style="text-align: right;">
+                <div style="font-size: 12px; color: var(--text-secondary); text-transform: uppercase;">Итого сумма</div>
+                <div style="font-size: 24px; font-weight: 700; color: var(--primary);" id="manualTotal">0 ₸</div>
+            </div>
+        </div>
+
+        <div
+            style="display: grid; grid-template-columns: 1fr 120px 120px 120px 50px; padding: 12px 24px; background: var(--bg-surface-hover); font-weight: 600; font-size: 13px; color: var(--text-secondary); border-bottom: 1px solid var(--border-color);">
+            <div>Товар</div>
+            <div style="text-align: center;">Цена за уп.</div>
+            <div style="text-align: center;">Кол-во (уп.)</div>
+            <div style="text-align: right;">Сумма</div>
+            <div></div>
+        </div>
+
+        <div id="manualItemsContainer" style="padding: 12px 24px; display: flex; flex-direction: column; gap: 12px;">
+            <!-- Dynamic rows go here -->
+        </div>
+
+        <div style="padding: 16px 24px; border-bottom: 1px solid var(--border-color);">
+            <button class="btn btn-secondary btn-sm" onclick="addManualRow()">
+                <span class="material-symbols-rounded">add</span> Добавить товар
+            </button>
+        </div>
+
+        <div
+            style="padding: 24px; background: var(--bg-surface-hover); display: flex; justify-content: flex-end; gap: 12px;">
+            <button class="btn"
+                style="background: var(--info); color: white; border: none; display: flex; align-items: center; gap: 6px;"
+                onclick="sendToTelegram('manual')">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="22" y1="2" x2="11" y2="13"></line>
+                    <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                </svg>
+                Отправить в Telegram
             </button>
         </div>
     </div>
@@ -93,6 +157,37 @@
 {% block extra_js %}
 <script>
     let currentOrderData = null;
+    let productsList = [];
+
+    document.addEventListener('DOMContentLoaded', async () => {
+        try {
+            const res = await fetch('/api/products');
+            productsList = await res.json();
+            addManualRow(); // Add initial row
+        } catch (e) {
+            console.error('Failed to load products', e);
+        }
+    });
+
+    function switchTab(tabId) {
+        document.getElementById('tab-auto').classList.remove('active');
+        document.getElementById('tab-auto').style.color = 'var(--text-secondary)';
+        document.getElementById('tab-auto').style.fontWeight = '500';
+        document.getElementById('tab-auto').style.borderBottomColor = 'transparent';
+
+        document.getElementById('tab-manual').classList.remove('active');
+        document.getElementById('tab-manual').style.color = 'var(--text-secondary)';
+        document.getElementById('tab-manual').style.fontWeight = '500';
+        document.getElementById('tab-manual').style.borderBottomColor = 'transparent';
+
+        document.getElementById(`tab-${tabId}`).classList.add('active');
+        document.getElementById(`tab-${tabId}`).style.color = 'var(--text-primary)';
+        document.getElementById(`tab-${tabId}`).style.fontWeight = '600';
+        document.getElementById(`tab-${tabId}`).style.borderBottomColor = 'var(--primary)';
+
+        document.getElementById('autoOrderSection').style.display = tabId === 'auto' ? 'block' : 'none';
+        document.getElementById('manualOrderSection').style.display = tabId === 'manual' ? 'block' : 'none';
+    }
 
     async function generateOrder(days) {
         if (!days || days < 1) {
@@ -124,6 +219,7 @@
             }
             const data = await res.json();
             currentOrderData = data;
+            currentOrderData.days = days;
 
             document.getElementById('orderTitle').textContent = `Автоматический смарт план на ${days} дней`;
             orderMeta.innerHTML = `<span class="material-symbols-rounded" style="font-size:16px;vertical-align:middle;margin-right:4px;color:var(--primary);">smart_toy</span> <span style="vertical-align:middle;">Система автоматически выбрала наилучший сценарий расхода из статистики за 30, 60 и 90 дней для обеспечения безопасности остатков</span>`;
@@ -173,32 +269,163 @@
         }
     }
 
-    async function sendToTelegram() {
-        if (!currentOrderData || !currentOrderData.items || currentOrderData.items.length === 0) {
-            showToast('Нет рассчитанных данных для отправки', 'warning');
-            return;
+    // --- MANUAL ORDER LOGIC ---
+    function addManualRow() {
+        const container = document.getElementById('manualItemsContainer');
+        const row = document.createElement('div');
+        row.style.display = 'grid';
+        row.style.gridTemplateColumns = '1fr 120px 120px 120px 50px';
+        row.style.gap = '12px';
+        row.style.alignItems = 'center';
+        row.className = 'manual-row';
+
+        const options = productsList.map(p =>
+            `<option value="${p.id}" data-name="${p.name_internal}" data-price="${p.price_per_box}" data-weight="${p.package_weight}" data-unit="${p.unit}" data-unitsperbox="${p.units_per_box}">${p.name_internal}</option>`
+        ).join('');
+
+        row.innerHTML = `
+            <div>
+                <select class="form-control m-product-select" onchange="onManualProductSelect(this)">
+                    <option value="">Выберите товар...</option>
+                    ${options}
+                </select>
+            </div>
+            <div>
+                <input type="text" class="form-control m-price-display" readonly style="text-align: right; background: transparent; border-color: transparent;" value="0 ₸">
+            </div>
+            <div>
+                <input type="number" class="form-control m-boxes-input" min="1" step="0.5" placeholder="Кол-во уп." style="text-align: center;" oninput="updateManualTotal()">
+            </div>
+            <div>
+                <input type="text" class="form-control m-cost-display" readonly style="text-align: right; background: transparent; border-color: transparent; font-weight: 600;" value="0 ₸">
+            </div>
+            <div style="text-align: right;">
+                <button class="btn btn-sm" style="color: var(--danger); padding: 4px;" onclick="removeManualRow(this)">
+                    <span class="material-symbols-rounded">delete</span>
+                </button>
+            </div>
+        `;
+        container.appendChild(row);
+    }
+
+    function removeManualRow(btn) {
+        btn.closest('.manual-row').remove();
+        updateManualTotal();
+    }
+
+    function onManualProductSelect(select) {
+        const row = select.closest('.manual-row');
+        const opt = select.selectedOptions[0];
+        if (opt && opt.value) {
+            const price = parseFloat(opt.dataset.price || 0);
+            row.querySelector('.m-price-display').value = `${price.toLocaleString()} ₸`;
+            // default 1 box on select
+            if (!row.querySelector('.m-boxes-input').value) {
+                row.querySelector('.m-boxes-input').value = 1;
+            }
+        } else {
+            row.querySelector('.m-price-display').value = '0 ₸';
+            row.querySelector('.m-boxes-input').value = '';
+        }
+        updateManualTotal();
+    }
+
+    function updateManualTotal() {
+        let globalTotal = 0;
+        document.querySelectorAll('.manual-row').forEach(row => {
+            const select = row.querySelector('.m-product-select');
+            const boxesInput = row.querySelector('.m-boxes-input');
+            const costDisplay = row.querySelector('.m-cost-display');
+
+            if (select.value && boxesInput.value) {
+                const opt = select.selectedOptions[0];
+                const price = parseFloat(opt.dataset.price || 0);
+                const boxes = parseFloat(boxesInput.value);
+                const rowTotal = price * boxes;
+
+                costDisplay.value = `${rowTotal.toLocaleString()} ₸`;
+                globalTotal += rowTotal;
+            } else {
+                costDisplay.value = '0 ₸';
+            }
+        });
+
+        document.getElementById('manualTotal').textContent = `${globalTotal.toLocaleString()} ₸`;
+    }
+
+    async function sendToTelegram(mode) {
+        let payload = null;
+
+        if (mode === 'auto') {
+            if (!currentOrderData || !currentOrderData.items || currentOrderData.items.length === 0) {
+                showToast('Нет рассчитанных данных для отправки', 'warning');
+                return;
+            }
+            payload = { ...currentOrderData, type: 'auto' };
+        } else if (mode === 'manual') {
+            const items = [];
+            let totalCost = 0;
+
+            document.querySelectorAll('.manual-row').forEach(row => {
+                const select = row.querySelector('.m-product-select');
+                const boxesInput = row.querySelector('.m-boxes-input');
+
+                if (select.value && boxesInput.value && parseFloat(boxesInput.value) > 0) {
+                    const opt = select.selectedOptions[0];
+                    const boxes = parseFloat(boxesInput.value);
+                    const price = parseFloat(opt.dataset.price || 0);
+                    const itemTotal = boxes * price;
+
+                    items.push({
+                        product_id: parseInt(select.value),
+                        name: opt.dataset.name,
+                        order_boxes: boxes,
+                        price_per_box: price,
+                        item_total: itemTotal,
+                        box_weight: parseFloat(opt.dataset.weight || 0),
+                        units_per_box: parseFloat(opt.dataset.unitsperbox || 1)
+                    });
+
+                    totalCost += itemTotal;
+                }
+            });
+
+            if (items.length === 0) {
+                showToast('Добавьте хотя бы один товар в заказ', 'warning');
+                return;
+            }
+
+            payload = {
+                type: 'manual',
+                days: 'Вручную', // Represent as manual
+                total_cost: totalCost,
+                items: items
+            };
         }
 
         try {
-            showToast('Отправка в Telegram...', 'info');
+            showToast('Отправка и сохранение в Ожидающий приход...', 'info');
             const res = await fetch('/api/orders/send_telegram', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(currentOrderData)
+                body: JSON.stringify(payload)
             });
-            
+
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || 'Произошла ошибка при отправке');
-            
-            showToast(data.message || 'Готово! Проверьте бота в Telegram!', 'success');
+
+            showToast(data.message || 'Готово! Ожидающий заказ сохранен!', 'success');
+
+            // Re-direct to stock or clear if manual
+            if (mode === 'manual') {
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1500);
+            }
         } catch (e) {
             console.error(e);
             showToast('Ошибка при отправке: ' + e.message, 'danger');
         }
-    }
-
-    function approveOrder() {
-        showToast('Функция сохранения заказа в разработке', 'warning');
     }
 </script>
 {% endblock %}

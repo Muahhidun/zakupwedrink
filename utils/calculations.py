@@ -232,33 +232,49 @@ def get_products_to_order(stock_data: List[Dict], days_threshold: int = 7,
             days_left = 0
 
         if days_left <= days_threshold or force_order:
-            needed_weight, boxes = calculate_order_quantity(
-                avg_consumption, order_days, current_stock, item['box_weight'],
+            # Extract necessary item details for clarity and to match the new structure
+            product_id = item['product_id']
+            name_russian = item['name_russian']
+            name_internal = item['name_internal']
+            box_weight = item['box_weight']
+            price_per_box = item['price_per_box']
+            unit = item.get('unit', 'кг')
+            units_per_box = item.get('units_per_box', 1)
+
+            # Рассчитываем количество для заказа
+            needed_weight, boxes_to_order = calculate_order_quantity(
+                avg_daily_consumption=avg_consumption,
+                days=order_days, # Use order_days for calculation, not days_threshold
+                current_stock=current_stock,
+                box_weight=box_weight,
                 use_02_rule=use_02_rule,
                 pending_weight=pending_weight,
-                unit=item.get('unit', 'кг'),
-                units_per_box=item.get('units_per_box', 1)
+                unit=unit,
+                units_per_box=units_per_box
             )
 
             # Пропускаем если ничего не нужно заказывать (достаточно товара в пути)
-            if boxes == 0:
+            if boxes_to_order == 0:
                 continue
 
+            order_cost = boxes_to_order * price_per_box
+            urgency = 'СРОЧНО' if days_left <= 3 else 'Скоро'
+            
             products_to_order.append({
-                'product_id': item['product_id'],
-                'name': item['name_internal'],
-                'name_russian': item['name_russian'],
+                'product_id': product_id,
+                'name': name_internal,
+                'name_russian': name_russian,
                 'current_stock': current_stock,
                 'pending_weight': pending_weight,
                 'avg_daily_consumption': avg_consumption,
                 'days_left': days_left,
                 'needed_weight': needed_weight,
-                'boxes_to_order': boxes,
-                'order_cost': boxes * item['price_per_box'],
-                'box_weight': item['box_weight'],
-                'price_per_box': item['price_per_box'],  # Добавляем для редактирования
-                'urgency': 'СРОЧНО' if days_left <= 3 else 'Скоро',
-                'unit': item.get('unit', 'кг')
+                'boxes_to_order': boxes_to_order,
+                'order_cost': order_cost,
+                'box_weight': box_weight,
+                'price_per_box': price_per_box,
+                'urgency': urgency,
+                'unit': unit
             })
 
     # Сортируем по срочности (сколько дней осталось)
