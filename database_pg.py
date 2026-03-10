@@ -185,6 +185,21 @@ class DatabasePG:
                 )
             """)
 
+            # 11. Supplier Debts (Missing items from deliveries)
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS supplier_debts (
+                    id SERIAL PRIMARY KEY,
+                    company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+                    product_id INTEGER REFERENCES products(id) ON DELETE CASCADE,
+                    boxes REAL NOT NULL,
+                    weight REAL NOT NULL,
+                    cost REAL NOT NULL,
+                    status VARCHAR(50) DEFAULT 'active',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    resolved_at TIMESTAMP NULL
+                )
+            """)
+
             # Безопасное добавление новых колонок (миграция для существующих баз)
             try:
                 await conn.execute("ALTER TABLE companies ADD COLUMN IF NOT EXISTS notes TEXT")
@@ -858,10 +873,62 @@ class DatabasePG:
 
                 await conn.execute("UPDATE pending_orders SET status = 'completed' WHERE id = $1", order_id)
 
+    async def resolve_order_without_insert(self, order_id: int):
+        """Отметить заказ как выполненный (например при ручной приемке) без автоматического добавления в supplies"""
+        async with self.pool.acquire() as conn:
+            await conn.execute("UPDATE pending_orders SET status = 'completed' WHERE id = $1", order_id)
+
     async def cancel_order(self, order_id: int):
         """Отменить заказ"""
         async with self.pool.acquire() as conn:
             await conn.execute("UPDATE pending_orders SET status = 'cancelled' WHERE id = $1", order_id)
+
+    async def add_supplier_debt(self, company_id: int, product_id: int, boxes: float, weight: float, cost: float) -> int:
+        """Добавить недовезенный товар в долги поставщика"""
+        async with self.pool.acquire() as conn:
+            result = await conn.fetchval("""
+                INSERT INTO supplier_debts (company_id, product_id, boxes, weight, cost)
+                VALUES ($1, $2, $3, $4, $5)
+                RETURNING id
+            """, company_id, product_id, boxes, weight, cost)
+            return result
+
+    async def get_active_debts(self, company_id: int) -> List[Dict]:
+        """Получить все незакрытые долги поставщиков"""
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch("""
+                SELECT d.*, p.name_internal, p.name_russian, p.package_weight, p.units_per_box
+                FROM supplier_debts d
+                JOIN products p ON d.product_id = p.id
+                WHERE d.company_id = $1 AND d.status = 'active'
+                ORDER BY d.created_at ASC
+            """, company_id)
+            return [dict(row) for row in rows]
+
+    async def resolve_supplier_debt(self, debt_id: int):
+        """Закрыть долг (товар был доставлен) - переносит в supplies и stock"""
+        async with self.pool.acquire() as conn:
+            async with conn.transaction():
+                debt = await conn.fetchrow("SELECT * FROM supplier_debts WHERE id = $1 AND status = 'active'", debt_id)
+                if not debt:
+                    return
+
+                company_id = debt['company_id']
+                from datetime import date
+                today = date.today()
+
+                # 1. Добавляем в приход (supplies)
+                await conn.execute("""
+                    INSERT INTO supplies (company_id, product_id, date, boxes, weight, cost)
+                    VALUES ($1, $2, $3, $4, $5, $6)
+                """, company_id, debt['product_id'], today, debt['boxes'], debt['weight'], debt['cost'])
+
+                # 2. Обновляем статус долга
+                await conn.execute("""
+                    UPDATE supplier_debts 
+                    SET status = 'resolved', resolved_at = CURRENT_TIMESTAMP 
+                    WHERE id = $1
+                """, debt_id)
 
     async def get_all_pending_weights(self, company_id: int) -> Dict[int, float]:
         """Получить вес в пути (pending orders) для всех товаров компани"""

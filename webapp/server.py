@@ -651,6 +651,8 @@ async def save_supply(request):
         data = await request.json()
         items = data.get('items', [])
         date_str = data.get('date', get_working_date())
+        resolve_pending_order_id = data.get('resolve_pending_order_id')
+        debts = data.get('debts', [])
         
         for item in items:
             product_id = item.get('product_id')
@@ -661,6 +663,17 @@ async def save_supply(request):
             if boxes > 0 or weight > 0:
                 await db.add_supply(company_id, product_id, date_str, int(boxes), weight, cost)
                 
+        if resolve_pending_order_id:
+            await db.resolve_order_without_insert(int(resolve_pending_order_id))
+
+        for db_item in debts:
+            product_id = db_item.get('product_id')
+            boxes = float(db_item.get('boxes', 0))
+            weight = float(db_item.get('weight', 0))
+            cost = float(db_item.get('cost', 0))
+            if boxes > 0 or weight > 0:
+                await db.add_supplier_debt(company_id, product_id, boxes, weight, cost)
+
         return safe_json_response({'status': 'ok'})
     except Exception as e:
         print(f"Ошибка сохранения поставки: {e}")
@@ -1288,14 +1301,24 @@ async def send_order_telegram_api(request):
             
             if boxes > 0:
                 message_lines.append(f"- {name}: {boxes} уп.")
-                
+                # Fetch Active Debts to append reminder
+        company_id = await get_current_company(request) # Ensure company_id is available here
+        debts = await db.get_active_debts(company_id)
+        if debts:
+            message_lines.append("\n\n⚠️ <b>Напоминание о долгах поставщика:</b>\n")
+            message_lines.append("<i>Вы не довезли нам следующие товары с прошлых поставок:</i>\n")
+            for d in debts:
+                message_lines.append(f"• {d['name_russian']} ({d['name_internal']}): <b>{d['boxes']} кор.</b>\n")
+            message_lines.append("Обязательно добавьте их к этому заказу!")
+
         message = "\n".join(message_lines)
-        
-        await bot.send_message(
-            chat_id=user['id'],
-            text=message,
-            parse_mode="HTML"
-        )
+
+        # Send via telegram
+        bot = get_bot_instance()
+        if not bot:
+            return safe_json_response({'error': 'Бот не инициализирован (telegram_mode error)'}, status=500)
+            
+        await bot.send_message(chat_id=user['id'], text=message, parse_mode="HTML")
         
         return safe_json_response({'success': True, 'message': 'Список закупа успешно отправлен в ваш Telegram'})
     except Exception as e:
@@ -1304,6 +1327,68 @@ async def send_order_telegram_api(request):
         return safe_json_response({'error': str(e)}, status=500)
 
 
+async def api_get_pending_orders(request):
+    """API: Получить ожидающие заказы для Приемки"""
+    user = await get_current_user(request)
+    if not user: return safe_json_response({'error': 'Unauthorized'}, status=401)
+    company_id = await get_current_company(request)
+    try:
+        orders_list = await db.get_pending_orders(company_id)
+        for order in orders_list:
+            if 'created_at' in order and order['created_at']:
+                order['created_at'] = order['created_at'].strftime('%Y-%m-%d %H:%M')
+            items = await db.get_pending_order_items(order['id'])
+            order['items'] = items
+        return safe_json_response({'success': True, 'orders': orders_list})
+    except Exception as e:
+        return safe_json_response({'error': str(e)}, status=500)
+
+async def api_accept_pending_order(request):
+    """API: Принять ожидающий заказ полностью"""
+    user = await get_current_user(request)
+    if not user: return safe_json_response({'error': 'Unauthorized'}, status=401)
+    try:
+        order_id = int(request.match_info.get('id'))
+        await db.complete_order(order_id)
+        return safe_json_response({'success': True})
+    except Exception as e:
+        return safe_json_response({'error': str(e)}, status=500)
+
+async def api_cancel_pending_order(request):
+    """API: Отменить ожидающий заказ"""
+    user = await get_current_user(request)
+    if not user: return safe_json_response({'error': 'Unauthorized'}, status=401)
+    try:
+        order_id = int(request.match_info.get('id'))
+        await db.cancel_order(order_id)
+        return safe_json_response({'success': True})
+    except Exception as e:
+        return safe_json_response({'error': str(e)}, status=500)
+
+async def api_get_debts(request):
+    """API: Получить активные долги поставщиков"""
+    user = await get_current_user(request)
+    if not user: return safe_json_response({'error': 'Unauthorized'}, status=401)
+    company_id = await get_current_company(request)
+    try:
+        debts = await db.get_active_debts(company_id)
+        for d in debts:
+            if 'created_at' in d and d['created_at']:
+                d['created_at'] = d['created_at'].strftime('%Y-%m-%d %H:%M')
+        return safe_json_response({'success': True, 'debts': debts})
+    except Exception as e:
+        return safe_json_response({'error': str(e)}, status=500)
+
+async def api_resolve_debt(request):
+    """API: Закрыть долг (товар привезли)"""
+    user = await get_current_user(request)
+    if not user: return safe_json_response({'error': 'Unauthorized'}, status=401)
+    try:
+        debt_id = int(request.match_info.get('id'))
+        await db.resolve_supplier_debt(debt_id)
+        return safe_json_response({'success': True})
+    except Exception as e:
+        return safe_json_response({'error': str(e)}, status=500)
 
 def create_app():
     """Создать приложение aiohttp"""
@@ -1342,6 +1427,12 @@ def create_app():
     app.router.add_get('/api/reports/weekly', get_weekly_report_api)
     app.router.add_get('/api/reports/advanced', api_reports_advanced)
     app.router.add_post('/api/supply', save_supply)
+    
+    app.router.add_get('/api/pending_orders', api_get_pending_orders)
+    app.router.add_post('/api/pending_orders/{id}/accept', api_accept_pending_order)
+    app.router.add_post('/api/pending_orders/{id}/cancel', api_cancel_pending_order)
+    app.router.add_get('/api/debts', api_get_debts)
+    app.router.add_post('/api/debts/{id}/resolve', api_resolve_debt)
     
     app.router.add_get('/api/shifts', api_get_shifts)
     app.router.add_post('/api/shifts/assign', api_assign_shift)

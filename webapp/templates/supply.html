@@ -88,6 +88,41 @@
         </div>
     </div>
 
+    <!-- Active Debts Banner (hidden initially) -->
+    <div id="debtsContainer" style="display: none; margin-bottom: 24px;">
+        <div class="card" style="border-left: 4px solid var(--danger); background: #fff5f5;">
+            <div style="display: flex; gap: 12px; margin-bottom: 12px;">
+                <span class="material-symbols-rounded" style="color: var(--danger);">warning</span>
+                <div>
+                    <h3 style="margin: 0; color: var(--danger); font-size: 16px;">Долги поставщиков</h3>
+                    <p style="margin: 4px 0 0 0; font-size: 13px; color: var(--text-secondary);">Следующие товары были
+                        оплачены, но не привезены в прошлые разы. Отметьте, если поставщик их довез.</p>
+                </div>
+            </div>
+            <div id="debtsList" style="display: flex; flex-direction: column; gap: 8px;">
+                <!-- Debts render here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Pending Orders Banner (hidden initially) -->
+    <div id="pendingOrdersContainer" style="display: none; margin-bottom: 24px;">
+        <div class="card" style="border-left: 4px solid var(--primary); background: var(--bg-surface-hover);">
+            <div style="display: flex; gap: 12px; margin-bottom: 12px;">
+                <span class="material-symbols-rounded" style="color: var(--primary);">local_shipping</span>
+                <div>
+                    <h3 style="margin: 0; color: var(--primary); font-size: 16px;">Ожидаемые поставки</h3>
+                    <p style="margin: 4px 0 0 0; font-size: 13px; color: var(--text-secondary);">У вас есть заявки,
+                        которые еще не приняты на склад.</p>
+                </div>
+            </div>
+            <div id="pendingOrdersList"
+                style="display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));">
+                <!-- Orders render here -->
+            </div>
+        </div>
+    </div>
+
     <div class="card" style="padding: 0;">
         <div class="header-row">
             <div>Товар</div>
@@ -151,6 +186,8 @@
 <script>
     let products = [];
     let rowCounter = 0;
+    let currentPendingOrderId = null;
+    let originalPendingItems = null;
 
     document.addEventListener('DOMContentLoaded', async () => {
         document.getElementById('supplyDate').value = new Date().toISOString().split('T')[0];
@@ -160,6 +197,10 @@
             const res = await fetch('/api/products');
             products = await res.json();
 
+            // Load extra data
+            await fetchPendingOrders();
+            await fetchDebts();
+
             // Add first empty row
             addRow();
         } catch (e) {
@@ -167,14 +208,105 @@
         }
     });
 
-    function addRow() {
+    async function fetchDebts() {
+        try {
+            const res = await fetch('/api/debts');
+            const data = await res.json();
+            if (data.success && data.debts && data.debts.length > 0) {
+                document.getElementById('debtsContainer').style.display = 'block';
+                const list = document.getElementById('debtsList');
+                list.innerHTML = data.debts.map(d => `
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px; background: white; border-radius: 8px; border: 1px solid var(--border-color);">
+                        <div>
+                            <div style="font-weight: 600;">${d.name_russian}</div>
+                            <div style="font-size: 12px; color: var(--text-secondary);">${d.boxes} уп. с ${d.created_at.split(' ')[0]}</div>
+                        </div>
+                        <button class="btn btn-sm btn-outline" style="color: var(--success); border-color: var(--success);" onclick="resolveDebt(${d.id})">
+                            Привезено
+                        </button>
+                    </div>
+                `).join('');
+            } else {
+                document.getElementById('debtsContainer').style.display = 'none';
+            }
+        } catch (e) { console.error("Debts load error", e); }
+    }
+
+    async function resolveDebt(id) {
+        if (!confirm("Уверены, что поставщик привез этот долг? Товар НЕ будет автоматически добавлен на склад.")) return;
+        try {
+            await fetch(`/api/debts/${id}/resolve`, { method: 'POST' });
+            fetchDebts();
+        } catch (e) { console.error(e); }
+    }
+
+    async function fetchPendingOrders() {
+        try {
+            const res = await fetch('/api/pending_orders');
+            const data = await res.json();
+            if (data.success && data.orders && data.orders.length > 0) {
+                document.getElementById('pendingOrdersContainer').style.display = 'block';
+                const list = document.getElementById('pendingOrdersList');
+                list.innerHTML = data.orders.map(o => `
+                    <div class="card" style="padding: 16px; border: 1px solid var(--border-color); background: white;">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px;">
+                            <div>
+                                <div style="font-weight: 600;">Заявка #${o.id}</div>
+                                <div style="font-size: 12px; color: var(--text-secondary);">${o.created_at}</div>
+                            </div>
+                            <div style="font-weight: 600; color: var(--primary);">${(o.total_cost || 0).toLocaleString()} ₸</div>
+                        </div>
+                        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                            <button class="btn btn-sm btn-primary" onclick='editPendingOrder(${JSON.stringify(o)})'>Редактировать / Принять</button>
+                            <button class="btn btn-sm" style="color: var(--danger); background: #fff5f5;" onclick="cancelPendingOrder(${o.id})">Отменить</button>
+                        </div>
+                    </div>
+                `).join('');
+            } else {
+                document.getElementById('pendingOrdersContainer').style.display = 'none';
+            }
+        } catch (e) { console.error("Pending orders load error", e); }
+    }
+
+    async function cancelPendingOrder(id) {
+        if (!confirm("Вы уверены, что хотите удалить эту заявку? Она больше не будет ожидаться.")) return;
+        try {
+            await fetch(`/api/pending_orders/${id}/cancel`, { method: 'POST' });
+            fetchPendingOrders();
+        } catch (e) { console.error(e); }
+    }
+
+    function editPendingOrder(order) {
+        currentPendingOrderId = order.id;
+        originalPendingItems = order.items.map(i => ({ product_id: i.product_id, boxes: parseFloat(i.boxes || 0) }));
+
+        document.getElementById('supplyItems').innerHTML = '';
+        rowCounter = 0;
+
+        // Hide banner to focus on form
+        document.getElementById('pendingOrdersContainer').style.display = 'none';
+
+        if (order.items && order.items.length > 0) {
+            order.items.forEach(item => {
+                addRow(item);
+            });
+        } else {
+            addRow();
+        }
+        updateTotal();
+    }
+
+    function addRow(prefillItem = null) {
         const container = document.getElementById('supplyItems');
         const count = ++rowCounter;
 
         const row = document.createElement('div');
         row.className = 'product-row';
 
-        let options = products.map(p => `<option value="${p.id}" data-price="${p.price_per_box}" data-weight="${p.package_weight}" data-unit="${p.unit}" data-unitsperbox="${p.units_per_box}">${p.name_internal}</option>`).join('');
+        let options = products.map(p => {
+            const selected = (prefillItem && p.id === prefillItem.product_id) ? 'selected' : '';
+            return `<option value="${p.id}" ${selected} data-price="${p.price_per_box}" data-weight="${p.package_weight}" data-unit="${p.unit}" data-unitsperbox="${p.units_per_box}">${p.name_internal}</option>`;
+        }).join('');
 
         row.innerHTML = `
             <div class="product-name">
@@ -184,7 +316,7 @@
                 </select>
             </div>
             <div class="row-boxes">
-                <input type="number" class="form-control boxes-input" placeholder="Кол-во" style="text-align: right;" oninput="onBoxesChange(this)">
+                <input type="number" class="form-control boxes-input" placeholder="Кол-во" style="text-align: right;" oninput="onBoxesChange(this)" value="${prefillItem ? prefillItem.boxes : ''}">
             </div>
             <div class="row-weight">
                 <input type="number" class="form-control weight-input" placeholder="Вес" style="text-align: right;" step="0.1">
@@ -199,6 +331,11 @@
             </div>
         `;
         container.appendChild(row);
+
+        if (prefillItem) {
+            const boxesInput = row.querySelector('.boxes-input');
+            onBoxesChange(boxesInput);
+        }
     }
 
     function removeRow(btn) {
@@ -249,6 +386,7 @@
     async function submitSupply() {
         const date = document.getElementById('supplyDate').value;
         const items = [];
+        let newDebts = [];
 
         document.querySelectorAll('.product-row').forEach(row => {
             const product_id = row.querySelector('.product-select').value;
@@ -259,9 +397,9 @@
             if (product_id && (boxes > 0 || weight > 0)) {
                 items.push({
                     product_id: parseInt(product_id),
-                    boxes: boxes || 0,
-                    weight: weight || 0,
-                    cost: cost || 0
+                    boxes: parseFloat(boxes || 0),
+                    weight: parseFloat(weight || 0),
+                    cost: parseFloat(cost || 0)
                 });
             }
         });
@@ -271,11 +409,45 @@
             return;
         }
 
+        // Check for debts if resolving an order
+        if (currentPendingOrderId && originalPendingItems) {
+            originalPendingItems.forEach(orig => {
+                const received = items.find(i => i.product_id === orig.product_id);
+                const rBoxes = received ? received.boxes : 0;
+
+                if (rBoxes < orig.boxes) {
+                    newDebts.push({
+                        product_id: orig.product_id,
+                        boxes: orig.boxes - rBoxes,
+                        weight: 0,
+                        cost: 0
+                    });
+                }
+            });
+
+            if (newDebts.length > 0) {
+                const debtMsg = newDebts.map(d => {
+                    const p = products.find(prod => prod.id === d.product_id);
+                    return `${p ? p.name_internal : 'Товар'} - ${d.boxes} уп.`;
+                }).join('\n');
+
+                const confirmDebt = confirm(`Внимание! Вы приняли меньше товара, чем было в заявке.\n\nЗаписать следующую разницу в "Долги поставщика"?\n\n${debtMsg}`);
+                if (!confirmDebt) {
+                    newDebts = [];
+                }
+            }
+        }
+
         try {
             const res = await fetch('/api/supply', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ date, items })
+                body: JSON.stringify({
+                    date,
+                    items,
+                    resolve_pending_order_id: currentPendingOrderId,
+                    debts: newDebts
+                })
             });
 
             if (res.ok) {
