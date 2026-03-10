@@ -1070,7 +1070,7 @@ class DatabasePG:
             
         async with self.pool.acquire() as conn:
             rows = await conn.fetch("""
-                SELECT s.id, s.user_id, s.date, s.start_time, s.end_time, s.status, s.company_id,
+                SELECT s.id, s.user_id, s.date, s.start_time, s.end_time, s.company_id,
                        u.first_name, u.last_name, u.real_name, u.role
                 FROM shifts s
                 JOIN users u ON s.user_id = u.id
