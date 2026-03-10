@@ -163,9 +163,6 @@ def calculate_order_quantity(avg_daily_consumption: float, days: int,
     available_weight = current_stock + pending_weight
     needed_weight = max(0, required_weight - available_weight)
 
-    if needed_weight == 0:
-        return 0, 0
-
     # Определяем метрику размера одной коробки
     is_pieces = unit == 'шт'
     box_size_metric = float(units_per_box) if is_pieces else float(box_weight)
@@ -173,6 +170,14 @@ def calculate_order_quantity(avg_daily_consumption: float, days: int,
     # Защита от деления на ноль
     if box_size_metric <= 0:
         box_size_metric = 1.0
+
+    # СПЕЦИАЛЬНОЕ ПРАВИЛО: Если товара нет на складе и нет в пути, 
+    # обязательно заказываем минимум 1 коробку, даже если нет истории расходов
+    if available_weight <= 0 and needed_weight < box_size_metric:
+        needed_weight = box_size_metric
+
+    if needed_weight == 0:
+        return 0, 0
 
     # Минимальный порог: если нужно меньше 30% от веса коробки, не заказываем
     # (с учетом товаров в пути хватает запаса)
@@ -218,9 +223,15 @@ def get_products_to_order(stock_data: List[Dict], days_threshold: int = 7,
 
         # Учитываем товары в пути при расчете "на сколько хватит"
         available_stock = current_stock + pending_weight
+        
+        # Если товара вообще нет на складе и нет в пути, форсируем заказ
+        force_order = available_stock <= 0
+        
         days_left = days_until_stockout(available_stock, avg_consumption)
+        if force_order:
+            days_left = 0
 
-        if days_left <= days_threshold:
+        if days_left <= days_threshold or force_order:
             needed_weight, boxes = calculate_order_quantity(
                 avg_consumption, order_days, current_stock, item['box_weight'],
                 use_02_rule=use_02_rule,
