@@ -1289,7 +1289,7 @@ async def send_order_telegram_api(request):
                 # Иначе считаем классический (коробки * вес коробки).
                 weight_ordered = boxes * box_weight
                 
-                await db.add_pending_order_item(order_id, product_id, boxes, weight_ordered, cost)
+                await db.add_item_to_order(order_id, product_id, boxes, weight_ordered, cost)
                 
         except Exception as db_err:
             print(f"Ошибка сохранения ожидающего заказа в БД: {db_err}")
