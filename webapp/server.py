@@ -1438,6 +1438,12 @@ def create_app():
     app.router.add_post('/api/pending_orders/{id}/cancel', api_cancel_pending_order)
     app.router.add_get('/api/debts', api_get_debts)
     app.router.add_post('/api/debts/{id}/resolve', api_resolve_debt)
+
+    # API Дашборд Заметки
+    app.router.add_get('/api/dashboard/notes', api_get_dashboard_notes)
+    app.router.add_post('/api/dashboard/notes', api_add_dashboard_note)
+    app.router.add_put('/api/dashboard/notes/{id}', api_update_dashboard_note)
+    app.router.add_delete('/api/dashboard/notes/{id}', api_delete_dashboard_note)
     
     app.router.add_get('/api/shifts', api_get_shifts)
     app.router.add_post('/api/shifts/assign', api_assign_shift)
