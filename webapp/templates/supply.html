@@ -116,8 +116,7 @@
                         которые еще не приняты на склад.</p>
                 </div>
             </div>
-            <div id="pendingOrdersList"
-                style="display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));">
+            <div id="pendingOrdersList" style="display: flex; flex-direction: column; gap: 8px;">
                 <!-- Orders render here -->
             </div>
         </div>
@@ -248,15 +247,17 @@
                 document.getElementById('pendingOrdersContainer').style.display = 'block';
                 const list = document.getElementById('pendingOrdersList');
                 list.innerHTML = data.orders.map(o => `
-                    <div class="card" style="padding: 16px; border: 1px solid var(--border-color); background: white;">
-                        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px; background: white; border-radius: 8px; border: 1px solid var(--border-color); flex-wrap: wrap; gap: 12px;">
+                        <div style="display: flex; gap: 24px; align-items: center; flex: 1; min-width: 250px;">
                             <div>
                                 <div style="font-weight: 600;">Заявка #${o.id}</div>
                                 <div style="font-size: 12px; color: var(--text-secondary);">${o.created_at}</div>
                             </div>
-                            <div style="font-weight: 600; color: var(--primary);">${(o.total_cost || 0).toLocaleString()} ₸</div>
+                            <div style="font-weight: 600; color: var(--primary); font-size: 15px;">
+                                ${(o.total_cost || 0).toLocaleString()} ₸
+                            </div>
                         </div>
-                        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                        <div style="display: flex; gap: 8px;">
                             <button class="btn btn-sm btn-primary" onclick='editPendingOrder(${JSON.stringify(o)})'>Редактировать / Принять</button>
                             <button class="btn btn-sm" style="color: var(--danger); background: #fff5f5;" onclick="cancelPendingOrder(${o.id})">Отменить</button>
                         </div>
