@@ -200,11 +200,23 @@ class DatabasePG:
                 )
             """)
 
-            # Безопасное добавление новых колонок (миграция для существующих баз)
-            try:
+        # Безопасное добавление новых колонок (миграция для существующих баз)
+        try:
+            async with self.pool.acquire() as conn:
                 await conn.execute("ALTER TABLE companies ADD COLUMN IF NOT EXISTS notes TEXT")
-            except Exception as e:
-                print(f"Migration error for companies.notes: {e}")
+        except Exception as e:
+            print(f"Migration error for companies.notes: {e}")
+
+        # Таблица для личных заметок по компании (отдельные карточки)
+        async with self.pool.acquire() as conn:
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS company_notes (
+                    id SERIAL PRIMARY KEY,
+                    company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+                    content TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
 
         print("✅ PostgreSQL SaaS база данных инициализирована")
 
@@ -1002,6 +1014,46 @@ class DatabasePG:
                 SET notes = $1
                 WHERE id = $2
             """, notes, company_id)
+
+    # --- Новые методы для раздельных заметок на дашборде ---
+    async def get_dashboard_notes(self, company_id: int) -> list[dict]:
+        """Получить все заметки на дашборде"""
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch("""
+                SELECT id, content, created_at
+                FROM company_notes
+                WHERE company_id = $1
+                ORDER BY created_at DESC
+            """, company_id)
+            return [dict(row) for row in rows]
+            
+    async def add_dashboard_note(self, company_id: int, content: str) -> int:
+        """Добавить новую заметку на дашборд"""
+        async with self.pool.acquire() as conn:
+            return await conn.fetchval("""
+                INSERT INTO company_notes (company_id, content)
+                VALUES ($1, $2)
+                RETURNING id
+            """, company_id, content)
+            
+    async def update_dashboard_note(self, note_id: int, company_id: int, content: str) -> bool:
+        """Редактировать существующую заметку"""
+        async with self.pool.acquire() as conn:
+            result = await conn.execute("""
+                UPDATE company_notes
+                SET content = $1
+                WHERE id = $2 AND company_id = $3
+            """, content, note_id, company_id)
+            return result == "UPDATE 1"
+            
+    async def delete_dashboard_note(self, note_id: int, company_id: int) -> bool:
+        """Удалить заметку"""
+        async with self.pool.acquire() as conn:
+            result = await conn.execute("""
+                DELETE FROM company_notes
+                WHERE id = $1 AND company_id = $2
+            """, note_id, company_id)
+            return result == "DELETE 1"
 
     async def get_recent_activity(self, company_id: int, limit: int = 5) -> List[Dict]:
         """Получить ленту последних событий (приемки, заявки, заказы)"""

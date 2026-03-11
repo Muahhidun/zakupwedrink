@@ -123,6 +123,61 @@
         margin-bottom: 16px;
         opacity: 0.5;
     }
+
+    /* Note Cards */
+    .note-card {
+        background: var(--bg-lighter);
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-md);
+        padding: 16px;
+        margin-bottom: 12px;
+        position: relative;
+    }
+
+    .note-card-actions {
+        position: absolute;
+        top: 12px;
+        right: 12px;
+        display: flex;
+        gap: 8px;
+    }
+
+    .note-btn {
+        background: none;
+        border: none;
+        color: var(--text-tertiary);
+        cursor: pointer;
+        padding: 4px;
+        border-radius: 4px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.2s;
+    }
+
+    .note-btn:hover {
+        background: var(--bg-card);
+        color: var(--primary);
+    }
+
+    .note-btn.delete:hover {
+        color: var(--danger);
+    }
+
+    .note-content {
+        white-space: pre-wrap;
+        font-size: 14px;
+        color: var(--text-primary);
+        line-height: 1.5;
+        padding-right: 60px;
+        /* Space for actions */
+        margin-bottom: 8px;
+    }
+
+    .note-date {
+        font-size: 11px;
+        color: var(--text-tertiary);
+    }
 </style>
 {% endblock %}
 
@@ -215,12 +270,19 @@
             <!-- Notes -->
             <div class="dashboard-section" style="margin-bottom: 0;">
                 <h2 class="section-title"><span class="material-symbols-rounded">edit_note</span> Личные заметки</h2>
-                <textarea id="company-notes" class="form-control" rows="4"
-                    placeholder="Напишите сюда важные мысли, напоминания..."
-                    style="resize: vertical; margin-bottom: 12px;"></textarea>
-                <button class="btn btn-primary" onclick="saveNotes()" style="width: 100%;">
-                    Сохранить заметки
-                </button>
+
+                <div id="notes-list">
+                    <!-- Заметки будут загружаться сюда -->
+                </div>
+
+                <div style="margin-top: 16px; border-top: 1px solid var(--border-color); padding-top: 16px;">
+                    <textarea id="new-note-content" class="form-control" rows="3"
+                        placeholder="Напишите сюда важные мысли, напоминания..."
+                        style="resize: vertical; margin-bottom: 12px;"></textarea>
+                    <button class="btn btn-primary" onclick="saveNewNote()" style="width: 100%;" id="btn-save-note">
+                        Добавить заметку
+                    </button>
+                </div>
             </div>
 
             <!-- Broadcast -->
@@ -289,9 +351,13 @@
                 }
                 document.getElementById('metric-stock-value').textContent = formatMoney(data.stock_value);
                 document.getElementById('metric-pending-value').textContent = formatMoney(data.pending_value);
-                document.getElementById('company-notes').value = data.notes || '';
+
+                // Рендер заметок
+                if (data.dashboard_notes) {
+                    renderNotes(data.dashboard_notes);
+                }
             }
-        } catch(e) {
+        } catch (e) {
             console.error(e);
         }
     }
@@ -301,13 +367,13 @@
             const res = await fetch('/api/dashboard/activity?limit=6');
             const data = await res.json();
             const feedContainer = document.getElementById('activity-feed');
-            
+
             if (data.success && data.activity && data.activity.length > 0) {
                 feedContainer.innerHTML = '';
                 data.activity.forEach(item => {
                     const icon = item.type === 'supply' ? 'local_shipping' : (item.type === 'order' ? 'shopping_cart' : 'list_alt');
                     const color = item.type === 'supply' ? 'var(--secondary)' : (item.type === 'order' ? 'var(--primary)' : 'var(--warning)');
-                    
+
                     const el = document.createElement('div');
                     el.style.display = 'flex';
                     el.style.gap = '12px';
@@ -315,11 +381,11 @@
                     el.style.padding = '12px';
                     el.style.background = 'var(--bg-lighter)';
                     el.style.borderRadius = 'var(--radius-md)';
-                    
+
                     const dateObj = new Date(item.created_at);
-                    const timeStr = dateObj.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                    const timeStr = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                     const dateStr = dateObj.toLocaleDateString();
-                    
+
                     el.innerHTML = `
                         <div style="background: ${color}20; color: ${color}; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
                             <span class="material-symbols-rounded" style="font-size: 20px;">${icon}</span>
@@ -335,35 +401,131 @@
             } else {
                 feedContainer.innerHTML = '<div class="empty-state">Нет недавних действий</div>';
             }
-        } catch(e) {
+        } catch (e) {
             console.error(e);
         }
     }
 
-    async function saveNotes() {
-        const notes = document.getElementById('company-notes').value;
-        const btn = document.querySelector('button[onclick="saveNotes()"]');
-        btn.textContent = 'Сохранение...';
+    function renderNotes(notes) {
+        const container = document.getElementById('notes-list');
+        container.innerHTML = '';
+        if (!notes || notes.length === 0) {
+            container.innerHTML = '<div class="empty-state" style="padding: 20px;">Нет активных заметок</div>';
+            return;
+        }
+
+        notes.forEach(note => {
+            const card = document.createElement('div');
+            card.className = 'note-card';
+            card.innerHTML = `
+                <div class="note-card-actions">
+                    <button class="note-btn" onclick="editNote(${note.id})" title="Редактировать">
+                        <span class="material-symbols-rounded" style="font-size: 18px;">edit</span>
+                    </button>
+                    <button class="note-btn delete" onclick="deleteNote(${note.id})" title="Удалить">
+                        <span class="material-symbols-rounded" style="font-size: 18px;">delete</span>
+                    </button>
+                </div>
+                <div class="note-content" id="note-content-${note.id}">${escapeHtml(note.content)}</div>
+                <div class="note-date">${note.created_at}</div>
+                <div id="note-edit-form-${note.id}" style="display: none; margin-top: 8px;">
+                    <textarea class="form-control" rows="3" id="note-edit-text-${note.id}" style="width: 100%; resize: vertical; margin-bottom: 8px;"></textarea>
+                    <div style="display: flex; gap: 8px;">
+                        <button class="btn btn-primary btn-sm" onclick="saveEditNote(${note.id})" style="flex: 1;">Сохранить</button>
+                        <button class="btn btn-secondary btn-sm" onclick="cancelEditNote(${note.id})" style="flex: 1;">Отмена</button>
+                    </div>
+                </div>
+            `;
+            container.appendChild(card);
+        });
+    }
+
+    function escapeHtml(unsafe) {
+        return (unsafe || '').replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+    }
+
+    async function saveNewNote() {
+        const content = document.getElementById('new-note-content').value.trim();
+        if (!content) return;
+
+        const btn = document.getElementById('btn-save-note');
+        btn.textContent = 'Добавление...';
         btn.disabled = true;
+
         try {
-            const res = await fetch('/api/company/notes', {
+            const res = await fetch('/api/dashboard/notes', {
                 method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({notes: notes})
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content: content })
             });
             const data = await res.json();
             if (data.success) {
-                btn.textContent = 'Сохранено ✓';
-                setTimeout(() => { btn.textContent = 'Сохранить заметки'; btn.disabled = false; }, 2000);
+                document.getElementById('new-note-content').value = '';
+                fetchDashboardMetrics(); // Перезагружаем метрики (в том числе заметки)
             } else {
-                alert('Ошибка: ' + data.error);
-                btn.textContent = 'Сохранить заметки';
-                btn.disabled = false;
+                alert('Ошибка: ' + (data.error || 'Неизвестная ошибка'));
             }
-        } catch(e) {
-            alert('Ошибка при сохранении');
-            btn.textContent = 'Сохранить заметки';
+        } catch (e) {
+            console.error(e);
+            alert('Сетевая ошибка при добавлении заметки');
+        } finally {
+            btn.textContent = 'Добавить заметку';
             btn.disabled = false;
+        }
+    }
+
+    async function deleteNote(noteId) {
+        if (!confirm('Удалить эту заметку?')) return;
+        try {
+            const res = await fetch(`/api/dashboard/notes/${noteId}`, { method: 'DELETE' });
+            const data = await res.json();
+            if (data.success) {
+                fetchDashboardMetrics();
+            } else {
+                alert('Ошибка при удалении: ' + data.error);
+            }
+        } catch (e) {
+            console.error(e);
+        }
+    }
+
+    function editNote(noteId) {
+        const contentDiv = document.getElementById(`note-content-${noteId}`);
+        const editForm = document.getElementById(`note-edit-form-${noteId}`);
+        const textarea = document.getElementById(`note-edit-text-${noteId}`);
+
+        // Unescape HTML back to raw text for editing
+        const rawText = contentDiv.innerText || contentDiv.textContent;
+        textarea.value = rawText;
+
+        contentDiv.style.display = 'none';
+        editForm.style.display = 'block';
+    }
+
+    function cancelEditNote(noteId) {
+        document.getElementById(`note-content-${noteId}`).style.display = 'block';
+        document.getElementById(`note-edit-form-${noteId}`).style.display = 'none';
+    }
+
+    async function saveEditNote(noteId) {
+        const content = document.getElementById(`note-edit-text-${noteId}`).value.trim();
+        if (!content) return;
+
+        try {
+            const res = await fetch(`/api/dashboard/notes/${noteId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content: content })
+            });
+            const data = await res.json();
+            if (data.success) {
+                cancelEditNote(noteId);
+                fetchDashboardMetrics();
+            } else {
+                alert('Ошибка сохранения: ' + data.error);
+            }
+        } catch (e) {
+            console.error(e);
         }
     }
 
@@ -373,7 +535,7 @@
             alert('Пожалуйста, введите текст объявления');
             return;
         }
-        
+
         if (!confirm('Вы уверены, что хотите отправить это сообщение всем сотрудникам франшизы в Telegram?')) {
             return;
         }
@@ -385,18 +547,18 @@
         try {
             const res = await fetch('/api/company/broadcast', {
                 method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({message: message})
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message: message })
             });
             const data = await res.json();
-            
+
             if (data.success) {
-                alert(`Объявление отправлено (${data.sent_count} чел.)`);
+                alert(`Объявление отправлено(${data.sent_count} чел.)`);
                 document.getElementById('broadcast-message').value = '';
             } else {
                 alert('Ошибка: ' + (data.error || 'Неизвестная ошибка'));
             }
-        } catch(e) {
+        } catch (e) {
             alert('Ошибка при отправке: ' + e);
         } finally {
             btn.textContent = 'Отправить всем';

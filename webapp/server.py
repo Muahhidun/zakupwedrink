@@ -1917,13 +1917,19 @@ async def api_get_dashboard_metrics(request):
 
         details = await db.get_company_details(company_id)
         notes = details.get('notes', '') if details else ''
+        
+        dashboard_notes = await db.get_dashboard_notes(company_id)
+        for dn in dashboard_notes:
+            if 'created_at' in dn and dn['created_at']:
+                dn['created_at'] = dn['created_at'].strftime('%Y-%m-%d %H:%M')
 
         return safe_json_response({
             'success': True,
             'stock_value': stock_value,
             'pending_value': pending_value,
             'next_purchase_days': next_purchase_days,
-            'notes': notes
+            'notes': notes,
+            'dashboard_notes': dashboard_notes
         })
     except Exception as e:
         print(f"Ошибка api_get_dashboard_metrics: {e}")
@@ -1951,6 +1957,64 @@ async def api_update_company_notes(request):
         data = await request.json()
         await db.update_company_notes(company_id, data.get('notes', ''))
         return safe_json_response({'success': True})
+    except Exception as e:
+        return safe_json_response({'error': str(e)}, status=500)
+
+# --- Новые API для раздельных заметок на дашборде ---
+async def api_get_dashboard_notes(request):
+    """API: Получить все заметки дашборда"""
+    user = await get_current_user(request)
+    if not user: return safe_json_response({'error': 'Unauthorized'}, status=401)
+    company_id = await get_current_company(request)
+    try:
+        notes = await db.get_dashboard_notes(company_id)
+        for n in notes:
+            if 'created_at' in n and n['created_at']:
+                n['created_at'] = n['created_at'].strftime('%Y-%m-%d %H:%M')
+        return safe_json_response({'success': True, 'notes': notes})
+    except Exception as e:
+        return safe_json_response({'error': str(e)}, status=500)
+
+async def api_add_dashboard_note(request):
+    """API: Добавить заметку на дашборд"""
+    user = await get_current_user(request)
+    if not user: return safe_json_response({'error': 'Unauthorized'}, status=401)
+    company_id = await get_current_company(request)
+    try:
+        data = await request.json()
+        content = data.get('content')
+        if not content:
+            return safe_json_response({'error': 'Empty content'}, status=400)
+        note_id = await db.add_dashboard_note(company_id, content)
+        return safe_json_response({'success': True, 'id': note_id})
+    except Exception as e:
+        return safe_json_response({'error': str(e)}, status=500)
+
+async def api_update_dashboard_note(request):
+    """API: Редактировать заметку на дашборде"""
+    user = await get_current_user(request)
+    if not user: return safe_json_response({'error': 'Unauthorized'}, status=401)
+    company_id = await get_current_company(request)
+    try:
+        note_id = int(request.match_info.get('id'))
+        data = await request.json()
+        content = data.get('content')
+        if not content:
+            return safe_json_response({'error': 'Empty content'}, status=400)
+        success = await db.update_dashboard_note(note_id, company_id, content)
+        return safe_json_response({'success': success})
+    except Exception as e:
+        return safe_json_response({'error': str(e)}, status=500)
+
+async def api_delete_dashboard_note(request):
+    """API: Удалить заметку на дашборде"""
+    user = await get_current_user(request)
+    if not user: return safe_json_response({'error': 'Unauthorized'}, status=401)
+    company_id = await get_current_company(request)
+    try:
+        note_id = int(request.match_info.get('id'))
+        success = await db.delete_dashboard_note(note_id, company_id)
+        return safe_json_response({'success': success})
     except Exception as e:
         return safe_json_response({'error': str(e)}, status=500)
 
