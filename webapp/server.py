@@ -1261,6 +1261,15 @@ async def send_order_telegram_api(request):
         if not bot:
              return safe_json_response({'error': 'Бот не инициализирован. Уведомление не отправлено.'}, status=500)
              
+        # Fetch all box_weights once for efficiency
+        product_ids = [item.get('product_id') for item in items if item.get('product_id')]
+        products_info = {}
+        if product_ids:
+            async with db.pool.acquire() as conn:
+                rows = await conn.fetch("SELECT id, box_weight, units_per_box FROM products WHERE id = ANY($1)", product_ids)
+                for r in rows:
+                    products_info[r['id']] = {'box_weight': r['box_weight'], 'units_per_box': r.get('units_per_box', 1)}
+
         # 1. Сохраняем в базу как "Ожидающий приход"
         try:
             company_id = await get_current_company(request)
@@ -1280,8 +1289,10 @@ async def send_order_telegram_api(request):
                     continue
                     
                 cost = item.get('item_total', 0)
-                box_weight = item.get('box_weight', 0)
-                units_per_box = item.get('units_per_box', 1) # Support for items by piece
+                
+                # Fetch reliable box_weight from the database instead of trusting the frontend payload
+                p_info = products_info.get(product_id, {})
+                box_weight = float(p_info.get('box_weight', item.get('box_weight', 1.0)))
                 
                 # Если товар в штуках (unit == 'шт'), то вес это просто кол-во штук = boxes * units_per_box
                 # Но так как мы не всегда знаем unit в этом объекте на 100%, 

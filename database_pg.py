@@ -405,48 +405,107 @@ class DatabasePG:
             return [dict(row) for row in rows]
 
     async def calculate_consumption(self, company_id: int, start_date, end_date) -> List[Dict]:
-        """Рассчитать расход между двумя датами (расход = остаток_вчера + поставки - остаток_сегодня)"""
-        from datetime import datetime
+        """Определяет средний расход товара за период с учетом пропусков и пустых полок"""
+        from datetime import datetime, date
+        from collections import defaultdict
+
         if isinstance(start_date, str):
             start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
         if isinstance(end_date, str):
             end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
 
         async with self.pool.acquire() as conn:
-            rows = await conn.fetch("""
-                WITH start_stock AS (
-                    SELECT product_id, quantity, weight FROM stock 
-                    WHERE company_id = $1 AND date = $2
-                ),
-                end_stock AS (
-                    SELECT product_id, quantity, weight FROM stock 
-                    WHERE company_id = $1 AND date = $3
-                ),
-                period_supplies AS (
-                    SELECT product_id, SUM(boxes) as total_boxes, SUM(weight) as total_weight
-                    FROM supplies
-                    WHERE company_id = $1 AND date > $2 AND date <= $3
-                    GROUP BY product_id
-                )
-                SELECT p.id as product_id,
-                       p.name_internal,
-                       p.name_russian,
-                       p.price_per_box,
-                       p.unit,
-                       p.box_weight,
-                       p.units_per_box,
-                       COALESCE(s_start.quantity, 0) as start_quantity,
-                       COALESCE(s_end.quantity, 0) as end_quantity,
-                       COALESCE(ps.total_boxes, 0) as supplied_quantity,
-                       (COALESCE(s_start.quantity, 0) + COALESCE(ps.total_boxes, 0) - COALESCE(s_end.quantity, 0)) as consumed_quantity,
-                       (COALESCE(s_start.weight, 0) + COALESCE(ps.total_weight, 0) - COALESCE(s_end.weight, 0)) as consumed_weight
-                FROM products p
-                LEFT JOIN start_stock s_start ON p.id = s_start.product_id
-                LEFT JOIN end_stock s_end ON p.id = s_end.product_id
-                LEFT JOIN period_supplies ps ON p.id = ps.product_id
-                WHERE p.company_id = $1 AND (s_start.quantity IS NOT NULL OR s_end.quantity IS NOT NULL OR ps.total_boxes IS NOT NULL)
+            # 1. Fetch all products to guarantee we return a row for each
+            products_rows = await conn.fetch("""
+                SELECT id, name_internal, name_russian, price_per_box, unit, box_weight, units_per_box
+                FROM products WHERE company_id = $1 AND is_active = TRUE
+            """, company_id)
+            products = {r['id']: dict(r) for r in products_rows}
+
+            # 2. Fetch all raw historical stock for the period
+            stock_rows = await conn.fetch("""
+                SELECT product_id, date, quantity, weight
+                FROM stock
+                WHERE company_id = $1 AND date >= $2 AND date <= $3
+                ORDER BY product_id, date ASC
             """, company_id, start_date, end_date)
-            return [dict(row) for row in rows]
+
+            # Organize stock history by product
+            history_by_product = defaultdict(list)
+            for r in stock_rows:
+                history_by_product[r['product_id']].append(dict(r))
+
+            # 3. Fetch all supplies for the period
+            supply_rows = await conn.fetch("""
+                SELECT product_id, date, boxes, weight
+                FROM supplies
+                WHERE company_id = $1 AND date > $2 AND date <= $3
+            """, company_id, start_date, end_date)
+
+            supplies_by_product = defaultdict(list)
+            for r in supply_rows:
+                supplies_by_product[r['product_id']].append(dict(r))
+
+        results = []
+        for pid, prod in products.items():
+            history = history_by_product[pid]
+            supplies = supplies_by_product[pid]
+
+            # If there's 0 or 1 stock records, we can't calculate a delta
+            if len(history) < 2:
+                prod_copy = dict(prod)
+                prod_copy['product_id'] = pid
+                prod_copy['start_quantity'] = history[0]['quantity'] if history else 0.0
+                prod_copy['end_quantity'] = history[-1]['quantity'] if history else 0.0
+                prod_copy['supplied_quantity'] = sum(s['boxes'] for s in supplies)
+                prod_copy['consumed_quantity'] = 0.0
+                prod_copy['consumed_weight'] = 0.0
+                prod_copy['actual_days'] = 1 # Prevent ZeroDivisionError downstream
+                results.append(prod_copy)
+                continue
+
+            total_consumed_qty = 0.0
+            total_consumed_weight = 0.0
+            total_valid_days = 0
+
+            # Step 4. Run the day-by-day smart consumption loop
+            for i in range(len(history) - 1):
+                cur_rec = history[i]
+                nxt_rec = history[i+1]
+
+                days_between = (nxt_rec['date'] - cur_rec['date']).days
+                if days_between <= 0: continue
+
+                # If BOTH the start and end of this specific gap is 0, we assume the product was 
+                # completely out of stock during this time. We discard these days from the average.
+                # Note: If a supply arrived during this gap, the end stock wouldn't be 0.
+                if cur_rec['quantity'] <= 0 and nxt_rec['quantity'] <= 0:
+                    continue
+
+                # Find all supplies that arrived exactly within this gap
+                gap_supplies_qty = sum(s['boxes'] for s in supplies if cur_rec['date'] < s['date'] <= nxt_rec['date'])
+                gap_supplies_wgt = sum(s['weight'] for s in supplies if cur_rec['date'] < s['date'] <= nxt_rec['date'])
+
+                consumed_qty = cur_rec['quantity'] + gap_supplies_qty - nxt_rec['quantity']
+                consumed_wgt = cur_rec['weight'] + gap_supplies_wgt - nxt_rec['weight']
+
+                total_valid_days += days_between
+                total_consumed_qty += consumed_qty
+                total_consumed_weight += consumed_wgt
+
+            # Build result
+            prod_copy = dict(prod)
+            prod_copy['product_id'] = pid
+            prod_copy['start_quantity'] = history[0]['quantity']
+            prod_copy['end_quantity'] = history[-1]['quantity']
+            prod_copy['supplied_quantity'] = sum(s['boxes'] for s in supplies)
+            prod_copy['consumed_quantity'] = total_consumed_qty
+            prod_copy['consumed_weight'] = total_consumed_weight
+            prod_copy['actual_days'] = total_valid_days if total_valid_days > 0 else 1
+
+            results.append(prod_copy)
+
+        return results
 
 
     async def get_stock_with_consumption(self, company_id: int) -> List[Dict]:
@@ -497,13 +556,13 @@ class DatabasePG:
             cons_60_data = cons_60.get(pid)
             cons_90_data = cons_90.get(pid)
             
-            avg_30 = (cons_30_data['consumed_quantity'] / days_30) if cons_30_data and cons_30_data['consumed_quantity'] > 0 else 0
-            avg_60 = (cons_60_data['consumed_quantity'] / days_60) if cons_60_data and cons_60_data['consumed_quantity'] > 0 else 0
-            avg_90 = (cons_90_data['consumed_quantity'] / days_90) if cons_90_data and cons_90_data['consumed_quantity'] > 0 else 0
+            avg_30 = (cons_30_data['consumed_quantity'] / cons_30_data['actual_days']) if cons_30_data and cons_30_data['consumed_quantity'] > 0 else 0
+            avg_60 = (cons_60_data['consumed_quantity'] / cons_60_data['actual_days']) if cons_60_data and cons_60_data['consumed_quantity'] > 0 else 0
+            avg_90 = (cons_90_data['consumed_quantity'] / cons_90_data['actual_days']) if cons_90_data and cons_90_data['consumed_quantity'] > 0 else 0
             
-            avg_w_30 = (cons_30_data['consumed_weight'] / days_30) if cons_30_data and cons_30_data['consumed_weight'] > 0 else 0
-            avg_w_60 = (cons_60_data['consumed_weight'] / days_60) if cons_60_data and cons_60_data['consumed_weight'] > 0 else 0
-            avg_w_90 = (cons_90_data['consumed_weight'] / days_90) if cons_90_data and cons_90_data['consumed_weight'] > 0 else 0
+            avg_w_30 = (cons_30_data['consumed_weight'] / cons_30_data['actual_days']) if cons_30_data and cons_30_data['consumed_weight'] > 0 else 0
+            avg_w_60 = (cons_60_data['consumed_weight'] / cons_60_data['actual_days']) if cons_60_data and cons_60_data['consumed_weight'] > 0 else 0
+            avg_w_90 = (cons_90_data['consumed_weight'] / cons_90_data['actual_days']) if cons_90_data and cons_90_data['consumed_weight'] > 0 else 0
 
             max_avg_qty = max(avg_30, avg_60, avg_90)
             

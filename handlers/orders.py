@@ -178,13 +178,14 @@ async def callback_save_order(callback: CallbackQuery, db: Database, state: FSMC
         # Добавляем товары в заказ
         for product in products_to_order:
             # Реальный вес = количество коробок × вес коробки
+            # Use positional arguments for cross-compatibility
             actual_weight = product['boxes_to_order'] * product['box_weight']
             await db.add_item_to_order(
-                order_id=order_id,
-                product_id=product['product_id'],
-                boxes=product['boxes_to_order'],
-                weight=actual_weight,
-                cost=product['order_cost']
+                order_id,
+                product['product_id'],
+                product['boxes_to_order'],
+                actual_weight,
+                product['order_cost']
             )
 
         # Очищаем state
@@ -230,13 +231,14 @@ async def handle_webapp_data(message: Message, db: Database, state: FSMContext):
             # Добавляем товары в заказ
             for product in products_to_order:
                 # Реальный вес = количество коробок × вес коробки
+                # Use positional arguments so it works with both sqlite (boxes, weight) and pg (boxes_ordered, weight_ordered)
                 actual_weight = product['boxes_to_order'] * product['box_weight']
                 await db.add_item_to_order(
-                    order_id=order_id,
-                    product_id=product['product_id'],
-                    boxes=product['boxes_to_order'],
-                    weight=actual_weight,
-                    cost=product['order_cost']
+                    order_id, 
+                    product['product_id'], 
+                    product['boxes_to_order'], 
+                    actual_weight, 
+                    product['order_cost']
                 )
 
             # Очищаем state
