@@ -302,7 +302,7 @@
                 `;
             }
 
-            const authorName = `${sub.first_name || ''} ${sub.last_name || ''}`.trim() || sub.username || 'Неизвестно';
+            const authorName = sub.real_name || `${sub.first_name || ''} ${sub.last_name || ''}`.trim() || sub.username || 'Неизвестно';
             const initials = authorName.charAt(0).toUpperCase();
 
             tr.innerHTML = `
