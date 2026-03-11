@@ -544,6 +544,7 @@ class DatabasePG:
                 item['days_remaining'] = 999
                 
             item['pending_boxes'] = pending_boxes
+            item['pending_weight'] = pending_w
 
         return latest_stock
 
