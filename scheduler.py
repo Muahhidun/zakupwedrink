@@ -104,8 +104,9 @@ async def check_and_send_reminder(bot: Bot, group_chat_id: str, reminder_type: s
             
         await db.init_db()
 
+        from zoneinfo import ZoneInfo
         # Проверяем были ли введены остатки сегодня
-        today = datetime.now().date()
+        today = datetime.now(ZoneInfo("Asia/Almaty")).date()
         company_id = 1 # Assuming default company
         has_data = await db.has_stock_for_date(company_id, today) if hasattr(db, 'pool') else await db.has_stock_for_date(today)
 
@@ -207,7 +208,8 @@ async def check_and_send_shift_reminder(bot: Bot):
         db = DatabasePG(database_url)
         await db.init_db()
 
-        now_astana = datetime.now() # Scheduler is already running in UTC+5 context
+        from zoneinfo import ZoneInfo
+        now_astana = datetime.now(ZoneInfo("Asia/Almaty")) # Changed to correctly use Almaty time
         users_in_one_hour = await db.get_users_with_shift_in_one_hour(now_astana)
 
         success_count = 0
