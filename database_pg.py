@@ -711,8 +711,13 @@ class DatabasePG:
                 sub_id = await conn.fetchval("""
                     INSERT INTO pending_stock_submissions (company_id, submitted_by, submission_date)
                     VALUES ($1, $2, $3)
+                    ON CONFLICT (submitted_by, submission_date) 
+                    DO UPDATE SET status = 'pending', created_at = CURRENT_TIMESTAMP
                     RETURNING id
                 """, company_id, user_id, date)
+
+                # Удаляем предыдущие позиции (если это перезапись)
+                await conn.execute("DELETE FROM pending_stock_items WHERE submission_id = $1", sub_id)
 
                 for item in items:
                     await conn.execute("""
