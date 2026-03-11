@@ -488,6 +488,12 @@ class DatabasePG:
 
                 consumed_qty = cur_rec['quantity'] + gap_supplies_qty - nxt_rec['quantity']
                 consumed_wgt = cur_rec['weight'] + gap_supplies_wgt - nxt_rec['weight']
+                
+                # Anomaly Filtering:
+                # If staff manually added stock without a supply, consumed_qty will be negative.
+                # We skip this interval completely to prevent dragging the average down.
+                if consumed_qty < 0:
+                    continue
 
                 total_valid_days += days_between
                 total_consumed_qty += consumed_qty
@@ -579,11 +585,13 @@ class DatabasePG:
             if max_avg_qty > 0:
                 item['avg_daily_consumption_qty'] = round(max_avg_qty, 2)
                 item['avg_daily_consumption_weight'] = round(max_avg_w, 2)
-                item['days_remaining'] = round(total_available / max_avg_qty, 1)
+                item['days_remaining'] = round(item['quantity'] / max_avg_qty, 1)
+                item['total_days_remaining'] = round(total_available / max_avg_qty, 1)
             else:
                 item['avg_daily_consumption_qty'] = 0
                 item['avg_daily_consumption_weight'] = 0
                 item['days_remaining'] = 999
+                item['total_days_remaining'] = 999
                 
             item['pending_boxes'] = pending_boxes
             item['pending_weight'] = pending_w

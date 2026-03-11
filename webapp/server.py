@@ -1924,7 +1924,8 @@ async def api_get_dashboard_metrics(request):
                 if weight is None: weight = 0
                 stock_value += (weight / divisor) * price
             
-            days_rem = item.get('days_remaining')
+            
+            days_rem = item.get('total_days_remaining', item.get('days_remaining'))
             if isinstance(days_rem, (int, float)) and days_rem >= 0:
                 if next_purchase_days is None or days_rem < next_purchase_days:
                     next_purchase_days = days_rem
