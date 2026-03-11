@@ -136,7 +136,8 @@ async def init_saas_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 reviewed_at TIMESTAMP,
                 reviewed_by BIGINT REFERENCES users(id),
-                rejection_reason TEXT
+                rejection_reason TEXT,
+                UNIQUE(submitted_by, submission_date)
             )
         """)
 

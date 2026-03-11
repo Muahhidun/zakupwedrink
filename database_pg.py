@@ -127,23 +127,6 @@ class DatabasePG:
                     cost REAL NOT NULL
                 )
             """)
-
-            # 8. Pending Stock Submissions
-            await conn.execute("""
-                CREATE TABLE IF NOT EXISTS pending_stock_submissions (
-                    id SERIAL PRIMARY KEY,
-                    company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
-                    submitted_by BIGINT NOT NULL REFERENCES users(id),
-                    submission_date DATE NOT NULL,
-                    status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    reviewed_at TIMESTAMP,
-                    reviewed_by BIGINT REFERENCES users(id),
-                    rejection_reason TEXT
-                )
-            """)
-
-            # 9. Pending Stock Items
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS pending_stock_items (
                     id SERIAL PRIMARY KEY,

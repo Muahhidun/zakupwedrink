@@ -91,7 +91,8 @@ async def migrate():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 reviewed_by BIGINT REFERENCES users(id),
                 reviewed_at TIMESTAMP,
-                rejection_reason TEXT
+                rejection_reason TEXT,
+                UNIQUE(submitted_by, submission_date)
             )
         """)
         print("   ✅ Таблица pending_stock_submissions создана")
