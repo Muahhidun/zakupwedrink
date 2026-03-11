@@ -284,6 +284,15 @@ class DatabasePG:
                 VALUES ($1, $2, $3, $4, $5, $6)
             """, company_id, product_id, date, boxes, weight, cost)
 
+    async def update_product_price(self, company_id: int, product_id: int, new_price: float):
+        """Обновить стоимость за коробку/литр товара на основе новой поставки"""
+        async with self.pool.acquire() as conn:
+            await conn.execute("""
+                UPDATE products
+                SET price_per_box = $1
+                WHERE id = $2 AND company_id = $3
+            """, new_price, product_id, company_id)
+
     async def get_supply_total(self, company_id: int, date) -> float:
         """Получить общую сумму поставок за день"""
         if isinstance(date, str):

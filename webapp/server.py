@@ -663,6 +663,11 @@ async def save_supply(request):
             if boxes > 0 or weight > 0:
                 await db.add_supply(company_id, product_id, date_str, int(boxes), weight, cost)
                 
+                # Обновляем ценник товара в базе, если мы указали количество и стоимость
+                if boxes > 0 and cost > 0:
+                    new_price = round(cost / boxes, 2)
+                    await db.update_product_price(company_id, product_id, new_price)
+                
         if resolve_pending_order_id:
             await db.resolve_order_without_insert(int(resolve_pending_order_id))
 
