@@ -782,7 +782,7 @@ class DatabasePG:
         async with self.pool.acquire() as conn:
             rows = await conn.fetch("""
                 SELECT s.id, s.submission_date, s.status, s.created_at, 
-                       u.first_name, u.last_name
+                       u.first_name, u.last_name, u.real_name, u.username
                 FROM pending_stock_submissions s
                 JOIN users u ON s.submitted_by = u.id
                 WHERE s.company_id = $1
