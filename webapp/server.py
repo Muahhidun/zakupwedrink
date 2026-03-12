@@ -175,6 +175,8 @@ async def auth_middleware(request, handler):
     if request.path.startswith('/api/') and 'x-telegram-init-data' in request.headers:
         return await handler(request)
 
+    path_is_public = any(request.path.startswith(p) for p in public_paths) or request.path == '/'
+    
     if not path_is_public:
         user = await get_current_user(request)
         if not user:
