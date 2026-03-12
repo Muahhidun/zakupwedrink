@@ -126,89 +126,89 @@ async def check_and_send_reminder(bot: Bot, reminder_type: str):
                 logger.info(f"✅ Компания {company_id}: Остатки за {today} уже введены, напоминание не требуется")
                 continue
 
-        # Формируем сообщение в зависимости от времени
-        messages = {
-            'morning': (
-                "⏰ <b>Доброе утро!</b>\n\n"
-                "Напоминание: необходимо ввести остатки на складе.\n"
-                "Нажмите 📝 Ввод остатков для обновления данных.\n\n"
-                f"Дата: {today.strftime('%d.%m.%Y')}"
-            ),
-            'afternoon': (
-                "⏰ <b>Напоминание!</b>\n\n"
-                "Остатки ещё не введены.\n"
-                "Пожалуйста, внесите данные по складу.\n\n"
-                f"Дата: {today.strftime('%d.%m.%Y')}"
-            ),
-            'evening': (
-                "⚠️ <b>Важное напоминание!</b>\n\n"
-                "Остатки до сих пор не введены.\n"
-                "Это влияет на точность расчёта закупов.\n"
-                "Пожалуйста, внесите данные как можно скорее.\n\n"
-                f"Дата: {today.strftime('%d.%m.%Y')}"
-            ),
-            'final': (
-                "🚨 <b>КРАЙНЕЕ НАПОМИНАНИЕ!</b>\n\n"
-                "Остатки за сегодня всё ещё не введены!\n"
-                "Это последнее напоминание за день.\n\n"
-                "⚠️ Без актуальных данных расчёт закупов будет неточным.\n"
-                "Пожалуйста, не забудьте ввести остатки.\n\n"
-                f"Дата: {today.strftime('%d.%m.%Y')}"
-            )
-        }
-
-        message = messages.get(reminder_type, messages['morning'])
-
-        # Кнопка для перехода в Web App
-        web_app_url = os.getenv('WEB_APP_URL', 'http://localhost:5005')
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="📝 Ввести остатки (Web)", web_app=WebAppInfo(url=f"{web_app_url}/stock_input"))]
-        ])
-
-        # Отправляем всем пользователям в личку
-        if hasattr(db, 'get_active_users_for_reminder'):
-            user_ids = await db.get_active_users_for_reminder(company_id, today.isoformat())
-            logger.info(f"📢 Компания {company_id}: Рассылка {len(user_ids)} пользователям (с учетом графика смен)...")
-        else:
-            user_ids = await db.get_all_active_users()
-            logger.info(f"📢 Компания {company_id}: Рассылка {len(user_ids)} пользователям...")
-
-        success_count = 0
-        for user_id in user_ids:
-            try:
-                await bot.send_message(
-                    chat_id=user_id,
-                    text=message,
-                    parse_mode="HTML",
-                    reply_markup=keyboard
+            # Формируем сообщение в зависимости от времени
+            messages = {
+                'morning': (
+                    "⏰ <b>Доброе утро!</b>\n\n"
+                    "Напоминание: необходимо ввести остатки на складе.\n"
+                    "Нажмите 📝 Ввод остатков для обновления данных.\n\n"
+                    f"Дата: {today.strftime('%d.%m.%Y')}"
+                ),
+                'afternoon': (
+                    "⏰ <b>Напоминание!</b>\n\n"
+                    "Остатки ещё не введены.\n"
+                    "Пожалуйста, внесите данные по складу.\n\n"
+                    f"Дата: {today.strftime('%d.%m.%Y')}"
+                ),
+                'evening': (
+                    "⚠️ <b>Важное напоминание!</b>\n\n"
+                    "Остатки до сих пор не введены.\n"
+                    "Это влияет на точность расчёта закупов.\n"
+                    "Пожалуйста, внесите данные как можно скорее.\n\n"
+                    f"Дата: {today.strftime('%d.%m.%Y')}"
+                ),
+                'final': (
+                    "🚨 <b>КРАЙНЕЕ НАПОМИНАНИЕ!</b>\n\n"
+                    "Остатки за сегодня всё ещё не введены!\n"
+                    "Это последнее напоминание за день.\n\n"
+                    "⚠️ Без актуальных данных расчёт закупов будет неточным.\n"
+                    "Пожалуйста, не забудьте ввести остатки.\n\n"
+                    f"Дата: {today.strftime('%d.%m.%Y')}"
                 )
-                success_count += 1
-            except Exception as e:
-                logger.error(f"❌ Ошибка отправки пользователю {user_id}: {e}")
-                
-        # Дублируем уведомление администраторам франшизы (кроме утреннего, чтобы не спамить)
-        if reminder_type != 'morning':
-            admin_ids = await db.get_admins_for_company(company_id)
-            for admin_id in admin_ids:
-                if admin_id not in user_ids: # не отправляем дважды, если админ на смене
-                    try:
-                        admin_msg = f"⚠️ <b>Внимание (Контроль)!</b>\n\nСотрудники еще не внесли остатки!\n\n" + message
-                        await bot.send_message(
-                            chat_id=admin_id,
-                            text=admin_msg,
-                            parse_mode="HTML",
-                            reply_markup=keyboard
-                        )
-                    except Exception as e:
-                        logger.error(f"❌ Ошибка CC админу {admin_id}: {e}")
+            }
 
-        logger.info(f"✅ Компания {company_id}: Напоминание ({reminder_type}) отправлено {success_count}/{len(user_ids)} пользователям")
+            message = messages.get(reminder_type, messages['morning'])
 
-    # Закрываем БД после всех операций
-    await db.close()
+            # Кнопка для перехода в Web App
+            web_app_url = os.getenv('WEB_APP_URL', 'http://localhost:5005')
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="📝 Ввести остатки (Web)", web_app=WebAppInfo(url=f"{web_app_url}/stock_input"))]
+            ])
 
-except Exception as e:
-    logger.error(f"❌ Ошибка в check_and_send_reminder: {e}")
+            # Отправляем всем пользователям в личку
+            if hasattr(db, 'get_active_users_for_reminder'):
+                user_ids = await db.get_active_users_for_reminder(company_id, today.isoformat())
+                logger.info(f"📢 Компания {company_id}: Рассылка {len(user_ids)} пользователям (с учетом графика смен)...")
+            else:
+                user_ids = await db.get_all_active_users()
+                logger.info(f"📢 Компания {company_id}: Рассылка {len(user_ids)} пользователям...")
+
+            success_count = 0
+            for user_id in user_ids:
+                try:
+                    await bot.send_message(
+                        chat_id=user_id,
+                        text=message,
+                        parse_mode="HTML",
+                        reply_markup=keyboard
+                    )
+                    success_count += 1
+                except Exception as e:
+                    logger.error(f"❌ Ошибка отправки пользователю {user_id}: {e}")
+                    
+            # Дублируем уведомление администраторам франшизы (кроме утреннего, чтобы не спамить)
+            if reminder_type != 'morning':
+                admin_ids = await db.get_admins_for_company(company_id)
+                for admin_id in admin_ids:
+                    if admin_id not in user_ids: # не отправляем дважды, если админ на смене
+                        try:
+                            admin_msg = f"⚠️ <b>Внимание (Контроль)!</b>\n\nСотрудники еще не внесли остатки!\n\n" + message
+                            await bot.send_message(
+                                chat_id=admin_id,
+                                text=admin_msg,
+                                parse_mode="HTML",
+                                reply_markup=keyboard
+                            )
+                        except Exception as e:
+                            logger.error(f"❌ Ошибка CC админу {admin_id}: {e}")
+
+            logger.info(f"✅ Компания {company_id}: Напоминание ({reminder_type}) отправлено {success_count}/{len(user_ids)} пользователям")
+
+        # Закрываем БД после всех операций
+        await db.close()
+
+    except Exception as e:
+        logger.error(f"❌ Ошибка в check_and_send_reminder: {e}")
 
 async def check_and_send_shift_reminder(bot: Bot):
     """
