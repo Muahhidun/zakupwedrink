@@ -1525,6 +1525,7 @@ def create_app():
     app.router.add_get('/superadmin', superadmin_page)
     app.router.add_post('/api/superadmin/companies', api_create_company)
     app.router.add_post('/api/superadmin/companies/{id}/subscription', api_update_company_subscription)
+    app.router.add_post('/api/superadmin/products', api_add_superadmin_product)
     app.router.add_delete('/api/superadmin/companies/{id}', api_delete_company)
 
     app.router.add_get('/staff', staff_page)
@@ -1674,6 +1675,56 @@ async def api_create_company(request):
         })
     except Exception as e:
         print(f"Ошибка api_create_company: {e}")
+        return safe_json_response({'error': str(e)}, status=500)
+
+async def api_add_superadmin_product(request):
+    """API: Добавить новый товар (Опционально глобально)"""
+    user = await get_current_user(request)
+    if not user or user.get('role') != 'admin' or user.get('company_id') != 1:
+        return safe_json_response({'error': 'Доступ запрещен'}, status=403)
+        
+    try:
+        data = await request.json()
+        name_chinese = data.get('name_chinese', '')
+        name_russian = data.get('name_russian', '')
+        name_internal = data.get('name_internal')
+        
+        # Convert strings to floats
+        package_weight = float(data.get('package_weight', 0))
+        units_per_box = int(data.get('units_per_box', 1))
+        price_per_box = float(data.get('price_per_box', 0))
+        unit = data.get('unit', 'кг')
+        
+        distribute_globally = data.get('distribute_globally', False)
+        
+        if not name_internal:
+            return safe_json_response({'error': 'Внутреннее название обязательно'}, status=400)
+            
+        if distribute_globally:
+            await db.add_product_globally(
+                name_chinese=name_chinese,
+                name_russian=name_russian,
+                name_internal=name_internal,
+                package_weight=package_weight,
+                units_per_box=units_per_box,
+                price_per_box=price_per_box,
+                unit=unit
+            )
+        else:
+            await db.add_product(
+                company_id=1,
+                name_chinese=name_chinese,
+                name_russian=name_russian,
+                name_internal=name_internal,
+                package_weight=package_weight,
+                units_per_box=units_per_box,
+                price_per_box=price_per_box,
+                unit=unit
+            )
+            
+        return safe_json_response({'success': True})
+    except Exception as e:
+        print(f"Ошибка api_add_superadmin_product: {e}")
         return safe_json_response({'error': str(e)}, status=500)
 
 async def api_update_company_subscription(request):

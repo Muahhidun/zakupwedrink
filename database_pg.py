@@ -217,12 +217,31 @@ class DatabasePG:
             result = await conn.fetchval("""
                 INSERT INTO products
                 (company_id, name_chinese, name_russian, name_internal, package_weight,
-                 units_per_box, box_weight, price_per_box, unit)
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
                 RETURNING id
             """, company_id, name_chinese, name_russian, name_internal, package_weight,
                 units_per_box, box_weight, price_per_box, unit)
             return result
+
+    async def add_product_globally(self, name_chinese: str, name_russian: str, name_internal: str,
+                         package_weight: float, units_per_box: int, price_per_box: float,
+                         unit: str = "кг") -> bool:
+        """Добавить товар ВО ВСЕ существующие компании (Для СуперАдмина)"""
+        box_weight = package_weight * units_per_box
+        async with self.pool.acquire() as conn:
+            companies = await conn.fetch("SELECT id FROM companies")
+            
+            for comp in companies:
+                c_id = comp['id']
+                await conn.execute("""
+                    INSERT INTO products
+                    (company_id, name_chinese, name_russian, name_internal, package_weight,
+                     units_per_box, box_weight, price_per_box, unit)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                    ON CONFLICT(company_id, name_internal) DO NOTHING
+                """, c_id, name_chinese, name_russian, name_internal, package_weight,
+                    units_per_box, box_weight, price_per_box, unit)
+            return True
 
     async def get_all_products(self, company_id: int, active_only: bool = False) -> List[Dict]:
         """Получить все товары компании (либо только активные)"""
