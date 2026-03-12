@@ -1329,10 +1329,11 @@ class DatabasePG:
         Возвращает список ID пользователей, у которых смена начинается ровно через 1 час.
         """
         target_date = current_datetime.date()
-        target_time = current_datetime.replace(minute=0, second=0, microsecond=0).time()
+        target_time = current_datetime.replace(second=0, microsecond=0).time()
         
         # Мы ищем смены, где start_time равен target_time + 1 час.
-        # Поскольку target_time - это python datetime.time, мы можем использовать SQL интервалы
+        # Планировщик дергает эту функцию каждые 5 минут. Нам нужно "поймать" смену
+        # ровно за 60 минут до начала (плюс/минус 1 минута на погрешность запуска).
         
         async with self.pool.acquire() as conn:
             rows = await conn.fetch("""
@@ -1341,8 +1342,8 @@ class DatabasePG:
                 JOIN shifts s ON u.id = s.user_id
                 WHERE u.is_active = TRUE 
                   AND s.date = $1 
-                  AND s.start_time >= $2::time + interval '55 minutes'
-                  AND s.start_time <= $2::time + interval '65 minutes'
+                  AND s.start_time >= $2::time + interval '59 minutes'
+                  AND s.start_time <= $2::time + interval '61 minutes'
             """, target_date, target_time)
             
             return [dict(row) for row in rows]
