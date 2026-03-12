@@ -71,9 +71,16 @@ class DatabasePG:
                     price_per_box REAL NOT NULL,
                     unit TEXT DEFAULT 'кг',
                     is_active BOOLEAN DEFAULT TRUE,
+                    is_global BOOLEAN DEFAULT FALSE,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     UNIQUE(company_id, name_internal)
                 )
+            """)
+            
+            # Migration: Add is_global to products
+            await conn.execute("""
+                ALTER TABLE products
+                ADD COLUMN IF NOT EXISTS is_global BOOLEAN DEFAULT FALSE;
             """)
 
             # 4. Stock Table
@@ -236,8 +243,8 @@ class DatabasePG:
                 await conn.execute("""
                     INSERT INTO products
                     (company_id, name_chinese, name_russian, name_internal, package_weight,
-                     units_per_box, box_weight, price_per_box, unit)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                     units_per_box, box_weight, price_per_box, unit, is_global)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, TRUE)
                     ON CONFLICT(company_id, name_internal) DO NOTHING
                 """, c_id, name_chinese, name_russian, name_internal, package_weight,
                     units_per_box, box_weight, price_per_box, unit)
@@ -1381,12 +1388,12 @@ class DatabasePG:
                 INSERT INTO products (
                     company_id, name_russian, name_internal, 
                     unit, box_weight, is_active, 
-                    category_id, display_order, price, units_per_box
+                    category_id, display_order, price, units_per_box, is_global
                 )
                 SELECT 
                     $2, name_russian, name_internal, 
                     unit, box_weight, is_active, 
-                    category_id, display_order, price, units_per_box
+                    category_id, display_order, price, units_per_box, is_global
                 FROM products 
                 WHERE company_id = $1 AND is_active = TRUE
             """, source_company_id, target_company_id)

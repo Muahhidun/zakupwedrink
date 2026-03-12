@@ -275,13 +275,17 @@
 
             let daysText = days === 999 ? 'Н/Д' : `${days} дней`;
 
+            let globalBadge = productInfo.is_global 
+                ? '<span style="margin-left:8px; font-size:11px; font-weight:600; color:var(--text-secondary); background:var(--bg-surface-hover); padding:2px 6px; border-radius:4px; display:inline-flex; align-items:center; gap:2px;"><span class="material-symbols-rounded" style="font-size:12px;">lock</span>Платформа</span>' 
+                : '';
+
             tr.innerHTML = `
                 <td>
                     <div style="display: flex; align-items: center; gap: 8px;">
                         <button onclick="toggleProduct(${item.product_id}, ${isActive})" class="btn btn-icon" style="padding: 4px; border: none; background: none; color: var(--text-tertiary);" title="${isActive ? 'Скрыть из Ввода остатков' : 'Показывать во Вводе остатков'}">
                             <span class="material-symbols-rounded" style="font-size: 18px;">${isActive ? 'visibility' : 'visibility_off'}</span>
                         </button>
-                        <div style="font-weight: 500">${item.prod_name}</div>
+                        <div style="font-weight: 500">${item.prod_name}${globalBadge}</div>
                     </div>
                 </td>
                 <td style="text-align: right; font-weight: 600; font-variant-numeric: tabular-nums;">
