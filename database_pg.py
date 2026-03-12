@@ -1312,10 +1312,11 @@ class DatabasePG:
             
             if shifts_today > 0:
                 rows = await conn.fetch("""
-                    SELECT u.id 
+                    SELECT DISTINCT u.id 
                     FROM users u
-                    JOIN shifts s ON u.id = s.user_id
-                    WHERE u.is_active = TRUE AND s.company_id = $1 AND s.date = $2
+                    LEFT JOIN shifts s ON u.id = s.user_id AND s.date = $2
+                    WHERE u.is_active = TRUE AND u.company_id = $1
+                      AND (s.id IS NOT NULL OR u.role IN ('admin', 'manager'))
                 """, company_id, date_str)
             else:
                 rows = await conn.fetch("""
