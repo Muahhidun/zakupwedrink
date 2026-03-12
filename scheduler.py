@@ -31,49 +31,55 @@ async def send_auto_purchase_order(bot: Bot):
             
         await db.init_db()
 
-        logger.info("🔍 Рассчитываю автоматический заказ на 14 дней...")
+        logger.info("🔍 Рассчитываю автоматический заказ на 14 дней для всех активных компаний...")
 
-        # Подготавливаем данные (аналогично ручному расчету)
-        stock_data = await prepare_order_data(db, company_id=1)
+        companies = await db.get_all_companies()
+        
+        for company in companies:
+            if company.get('subscription_status') != 'active':
+                continue
+                
+            company_id = company['id']
+            # Подготавливаем данные (аналогично ручному расчету)
+            stock_data = await prepare_order_data(db, company_id=company_id)
 
-        # Получаем заказ с порогом 500,000₸
-        products_to_order, total_cost, should_notify = get_auto_order_with_threshold(
-            stock_data,
-            order_days=14,
-            threshold_amount=500000
-        )
-
-        if not should_notify:
-            logger.info(
-                f"💰 Сумма заказа ({total_cost:,.0f}₸) меньше порога (500,000₸). "
-                f"Уведомление не отправляется."
+            # Получаем заказ с порогом 500,000₸
+            products_to_order, total_cost, should_notify = get_auto_order_with_threshold(
+                stock_data,
+                order_days=14,
+                threshold_amount=500000
             )
-            await db.close()
-            return
 
-        # Формируем сообщение
-        order_text = format_auto_order_list(products_to_order, total_cost)
-
-        # Отправляем всем активным пользователям
-        user_ids = await db.get_all_active_users()
-        logger.info(f"📢 Отправка заказа {len(user_ids)} пользователям...")
-
-        success_count = 0
-        for user_id in user_ids:
-            try:
-                await bot.send_message(
-                    chat_id=user_id,
-                    text=order_text,
-                    parse_mode="HTML"
+            if not should_notify:
+                logger.info(
+                    f"🏢 Компания {company_id}: Сумма заказа ({total_cost:,.0f}₸) меньше порога (500,000₸). "
+                    f"Уведомление не отправляется."
                 )
-                success_count += 1
-            except Exception as e:
-                logger.error(f"❌ Ошибка отправки пользователю {user_id}: {e}")
+                continue
 
-        logger.info(
-            f"✅ Автоматический заказ (сумма: {total_cost:,.0f}₸) "
-            f"отправлен {success_count}/{len(user_ids)} пользователям"
-        )
+            # Формируем сообщение
+            order_text = format_auto_order_list(products_to_order, total_cost)
+
+            # Отправляем только администраторам данной компании
+            admin_ids = await db.get_admins_for_company(company_id)
+            logger.info(f"📢 Компания {company_id}: Отправка заказа {len(admin_ids)} администраторам...")
+
+            success_count = 0
+            for admin_id in admin_ids:
+                try:
+                    await bot.send_message(
+                        chat_id=admin_id,
+                        text=order_text,
+                        parse_mode="HTML"
+                    )
+                    success_count += 1
+                except Exception as e:
+                    logger.error(f"❌ Ошибка отправки админу {admin_id}: {e}")
+
+            logger.info(
+                f"✅ Компания {company_id}: Автоматический заказ (сумма: {total_cost:,.0f}₸) "
+                f"отправлен {success_count}/{len(admin_ids)} администраторам"
+            )
 
         await db.close()
 
@@ -83,13 +89,12 @@ async def send_auto_purchase_order(bot: Bot):
         traceback.print_exc()
 
 
-async def check_and_send_reminder(bot: Bot, group_chat_id: str, reminder_type: str):
+async def check_and_send_reminder(bot: Bot, reminder_type: str):
     """
     Проверить введены ли остатки сегодня, если нет - отправить напоминание
 
     Args:
         bot: Telegram bot instance
-        group_chat_id: ID группового чата
         reminder_type: Тип напоминания (morning, afternoon, evening, final)
     """
     try:
@@ -105,15 +110,21 @@ async def check_and_send_reminder(bot: Bot, group_chat_id: str, reminder_type: s
         await db.init_db()
 
         from zoneinfo import ZoneInfo
-        # Проверяем были ли введены остатки сегодня
         today = datetime.now(ZoneInfo("Asia/Almaty")).date()
-        company_id = 1 # Assuming default company
-        has_data = await db.has_stock_for_date(company_id, today) if hasattr(db, 'pool') else await db.has_stock_for_date(today)
+        
+        companies = await db.get_all_companies()
+        
+        for company in companies:
+            if company.get('subscription_status') not in ['active', 'trial']:
+                continue
+                
+            company_id = company['id']
+            # Проверяем были ли введены остатки сегодня для этой компании
+            has_data = await db.has_stock_for_date(company_id, today) if hasattr(db, 'pool') else await db.has_stock_for_date(today)
 
-        if has_data:
-            logger.info(f"✅ Остатки за {today} уже введены, напоминание не требуется")
-            await db.close()
-            return
+            if has_data:
+                logger.info(f"✅ Компания {company_id}: Остатки за {today} уже введены, напоминание не требуется")
+                continue
 
         # Формируем сообщение в зависимости от времени
         messages = {
@@ -154,25 +165,13 @@ async def check_and_send_reminder(bot: Bot, group_chat_id: str, reminder_type: s
             [InlineKeyboardButton(text="📝 Ввести остатки (Web)", web_app=WebAppInfo(url=f"{web_app_url}/stock_input"))]
         ])
 
-        # Отправляем в группу
-        try:
-            await bot.send_message(
-                chat_id=group_chat_id,
-                text=message,
-                parse_mode="HTML",
-                reply_markup=keyboard
-            )
-            logger.info(f"✅ Напоминание ({reminder_type}) отправлено в группу {group_chat_id}")
-        except Exception as e:
-            logger.error(f"❌ Ошибка отправки в группу: {e}")
-
         # Отправляем всем пользователям в личку
         if hasattr(db, 'get_active_users_for_reminder'):
             user_ids = await db.get_active_users_for_reminder(company_id, today.isoformat())
-            logger.info(f"📢 Рассылка напоминаний {len(user_ids)} пользователям (с учетом графика смен)...")
+            logger.info(f"📢 Компания {company_id}: Рассылка {len(user_ids)} пользователям (с учетом графика смен)...")
         else:
             user_ids = await db.get_all_active_users()
-            logger.info(f"📢 Рассылка напоминаний {len(user_ids)} пользователям...")
+            logger.info(f"📢 Компания {company_id}: Рассылка {len(user_ids)} пользователям...")
 
         success_count = 0
         for user_id in user_ids:
@@ -186,14 +185,30 @@ async def check_and_send_reminder(bot: Bot, group_chat_id: str, reminder_type: s
                 success_count += 1
             except Exception as e:
                 logger.error(f"❌ Ошибка отправки пользователю {user_id}: {e}")
+                
+        # Дублируем уведомление администраторам франшизы (кроме утреннего, чтобы не спамить)
+        if reminder_type != 'morning':
+            admin_ids = await db.get_admins_for_company(company_id)
+            for admin_id in admin_ids:
+                if admin_id not in user_ids: # не отправляем дважды, если админ на смене
+                    try:
+                        admin_msg = f"⚠️ <b>Внимание (Контроль)!</b>\n\nСотрудники еще не внесли остатки!\n\n" + message
+                        await bot.send_message(
+                            chat_id=admin_id,
+                            text=admin_msg,
+                            parse_mode="HTML",
+                            reply_markup=keyboard
+                        )
+                    except Exception as e:
+                        logger.error(f"❌ Ошибка CC админу {admin_id}: {e}")
 
-        logger.info(f"✅ Напоминание ({reminder_type}) отправлено {success_count}/{len(user_ids)} пользователям")
+        logger.info(f"✅ Компания {company_id}: Напоминание ({reminder_type}) отправлено {success_count}/{len(user_ids)} пользователям")
 
-        # Закрываем БД после всех операций
-        await db.close()
+    # Закрываем БД после всех операций
+    await db.close()
 
-    except Exception as e:
-        logger.error(f"❌ Ошибка в check_and_send_reminder: {e}")
+except Exception as e:
+    logger.error(f"❌ Ошибка в check_and_send_reminder: {e}")
 
 async def check_and_send_shift_reminder(bot: Bot):
     """
@@ -246,19 +261,42 @@ async def check_and_send_shift_reminder(bot: Bot):
         import traceback
         traceback.print_exc()
 
+async def check_expired_trials_and_subscriptions():
+    """Ежедневная задача для проверки и отключения истекших подписок/триалов"""
+    try:
+        from database_pg import DatabasePG
+        database_url = os.getenv('DATABASE_URL')
+        if not database_url:
+            return
+            
+        db = DatabasePG(database_url)
+        await db.init_db()
+        
+        updated_count = await db.check_expired_subscriptions()
+        if updated_count > 0:
+            logger.warning(f"⚠️ Отключено {updated_count} компаний по истечению срока подписки/триала")
+        else:
+            logger.info("✅ Истекших подписок не найдено")
+            
+        await db.close()
+    except Exception as e:
+        logger.error(f"❌ Ошибка в check_expired_trials_and_subscriptions: {e}")
+
 def setup_scheduler(bot: Bot) -> AsyncIOScheduler:
     """
     Настроить и запустить планировщик задач
     """
     scheduler = AsyncIOScheduler(timezone="Asia/Almaty")  # Казахстан UTC+5
 
-    # Получаем ID группового чата из переменных окружения
-    group_chat_id = os.getenv('REMINDER_CHAT_ID')  # ID группы
-
-    if not group_chat_id:
-        logger.warning("⚠️ REMINDER_CHAT_ID не установлен, напоминания отключены")
-        logger.warning("💡 Добавьте REMINDER_CHAT_ID в .env файл для включения напоминаний")
-        return scheduler
+    # Проверка подписок каждую полночь в 00:05
+    scheduler.add_job(
+        check_expired_trials_and_subscriptions,
+        trigger=CronTrigger(hour=0, minute=5, timezone="Asia/Almaty"),
+        id='check_expired_subs',
+        name='Проверка истекших подписок (00:05)',
+        replace_existing=True
+    )
+    logger.info("📅 Проверка подписок настроена на 00:05")
 
     # Добавляем напоминания на разное время
     reminders = [
@@ -273,12 +311,12 @@ def setup_scheduler(bot: Bot) -> AsyncIOScheduler:
         scheduler.add_job(
             check_and_send_reminder,
             trigger=CronTrigger(hour=hour, minute=minute, timezone="Asia/Almaty"),
-            args=[bot, group_chat_id, reminder_type],
+            args=[bot, reminder_type],
             id=f'reminder_{reminder_type}',
             name=name,
             replace_existing=True
         )
-        logger.info(f"📅 {name} настроено для чата {group_chat_id}")
+        logger.info(f"📅 {name} настроено")
 
     logger.info("📱 Личные напоминания будут отправлены всем зарегистрированным пользователям бота")
 

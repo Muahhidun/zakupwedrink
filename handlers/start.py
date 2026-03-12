@@ -191,26 +191,4 @@ async def cmd_help(message: Message, user_role: str = 'employee'):
     await message.answer(help_text, reply_markup=get_main_menu(is_private, user_role), parse_mode="HTML")
 
 
-@router.message(Command("chatid"))
-async def cmd_chatid(message: Message):
-    """Показать Chat ID текущего чата"""
-    chat_id = message.chat.id
-    chat_type = message.chat.type
 
-    if chat_type == "private":
-        response = (
-            f"🔑 <b>Chat ID этого чата:</b> <code>{chat_id}</code>\n\n"
-            f"⚠️ Это приватный чат. Для напоминаний нужен ID <b>группы</b>.\n"
-            f"Используйте команду /chatid в вашей группе 'WeDrink закуп бот'."
-        )
-    else:
-        chat_title = message.chat.title or "Неизвестная группа"
-        response = (
-            f"🔑 <b>Chat ID этой группы:</b> <code>{chat_id}</code>\n\n"
-            f"📱 Название: {chat_title}\n"
-            f"👥 Тип: {chat_type}\n\n"
-            f"✅ Скопируйте этот ID и добавьте в переменную окружения <code>REMINDER_CHAT_ID</code> на Railway.\n\n"
-            f"💡 Чтобы скопировать - нажмите на ID выше."
-        )
-
-    await message.answer(response, parse_mode="HTML")

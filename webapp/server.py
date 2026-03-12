@@ -175,8 +175,6 @@ async def auth_middleware(request, handler):
     if request.path.startswith('/api/') and 'x-telegram-init-data' in request.headers:
         return await handler(request)
 
-    path_is_public = any(request.path.startswith(p) for p in public_paths)
-    
     if not path_is_public:
         user = await get_current_user(request)
         if not user:
@@ -185,6 +183,18 @@ async def auth_middleware(request, handler):
                 return safe_json_response({'error': 'Unauthorized'}, status=401)
             # Для HTML страниц мы не делаем серверный редирект, чтобы Mini App мог загрузить скрипт авторизации.
             # На стороне клиента app.js проверит /api/user/me и сделает редирект если нужно.
+        else:
+            # Check company subscription status
+            company_id = user.get('company_id')
+            if company_id and company_id != 1 and not request.path.startswith('/superadmin'):
+                async with db.pool.acquire() as conn:
+                    status = await conn.fetchval("SELECT subscription_status FROM companies WHERE id = $1", company_id)
+                
+                if status == 'expired' and request.path != '/expired':
+                    if request.path.startswith('/api/'):
+                        return safe_json_response({'error': 'Subscription expired'}, status=403)
+                    elif request.path.startswith('/dashboard') or request.path == '/' or request.path.startswith('/manager'):
+                        raise web.HTTPFound('/expired')
                 
     return await handler(request)
 
@@ -1361,9 +1371,22 @@ async def send_order_telegram_api(request):
         if not bot:
             return safe_json_response({'error': 'Бот не инициализирован (telegram_mode error)'}, status=500)
             
-        await bot.send_message(chat_id=user['id'], text=message, parse_mode="HTML")
-        
-        return safe_json_response({'success': True, 'message': 'Список закупа успешно отправлен в ваш Telegram'})
+        admin_ids = await db.get_admins_for_company(company_id)
+        if not admin_ids:
+            return safe_json_response({'error': 'Нет администраторов для уведомления в текущей компании'}, status=400)
+            
+        success_count = 0
+        for admin_id in admin_ids:
+            try:
+                await bot.send_message(chat_id=admin_id, text=message, parse_mode="HTML")
+                success_count += 1
+            except Exception as tg_err:
+                print(f"Ошибка отправки заказа админу {admin_id}: {tg_err}")
+                
+        if success_count == 0:
+            return safe_json_response({'error': 'Не удалось доставить список закупа в Telegram'}, status=500)
+            
+        return safe_json_response({'success': True, 'message': f'Список закупа успешно отправлен в Telegram ({success_count}/{len(admin_ids)} чел.)'})
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -1460,6 +1483,9 @@ def create_app():
     app.router.add_get('/supply', supply_page)
     app.router.add_get('/order_edit', order_edit)
     app.router.add_get('/schedule', schedule_page)
+    app.router.add_get('/settings', settings_page)
+    app.router.add_get('/staff', staff_page)
+    app.router.add_get('/expired', expired_page)
     
     # API endpoints
     app.router.add_get('/api/auth/telegram', telegram_login)
@@ -1623,6 +1649,13 @@ async def api_create_company(request):
         if not company:
             return safe_json_response({'error': 'Ошибка создания компании в БД'}, status=500)
             
+        # Копируем базовые товары от компании 1 (шаблона)
+        try:
+            inserted_products = await db.duplicate_company_products(source_company_id=1, target_company_id=company['id'])
+            print(f"Скопировано {inserted_products} товаров для компании {company['id']}")
+        except Exception as copy_err:
+            print(f"Ошибка копирования товаров для новой компании: {copy_err}")
+            
         # Генерируем инвайт-ссылку для Владельца новой компании
         # В идеале нужно хранить токены в БД, но для простоты зашифруем данные в base64
         import base64
@@ -1636,7 +1669,8 @@ async def api_create_company(request):
         return safe_json_response({
             'success': True,
             'company': company,
-            'invite_url': invite_url
+            'invite_url': invite_url,
+            'products_copied': inserted_products if 'inserted_products' in locals() else 0
         })
     except Exception as e:
         print(f"Ошибка api_create_company: {e}")
@@ -1701,6 +1735,21 @@ async def staff_page(request):
         'company_id': company_id
     }
     return aiohttp_jinja2.render_template('staff.html', request, context)
+
+async def expired_page(request):
+    """Страница блокировки для истекших подписок"""
+    user = await get_current_user(request)
+    if not user:
+        raise web.HTTPFound('/login')
+        
+    company_id = await get_current_company(request)
+    
+    context = {
+        'page': 'expired',
+        'user': user,
+        'company_id': company_id
+    }
+    return aiohttp_jinja2.render_template('expired.html', request, context)
 
 async def api_invite_staff(request):
     """API: Сгенерировать инвайт для нового сотрудника"""

@@ -1293,6 +1293,15 @@ class DatabasePG:
             result = await conn.execute("DELETE FROM shifts WHERE id = $1 AND company_id = $2", shift_id, company_id)
             return result.startswith("DELETE 1")
 
+    async def get_admins_for_company(self, company_id: int) -> List[int]:
+        """Получить список Telegram ID всех администраторов и менеджеров конкретной компании"""
+        async with self.pool.acquire() as conn:
+            records = await conn.fetch(
+                "SELECT id FROM users WHERE company_id = $1 AND role IN ('admin', 'manager', 'superadmin') AND is_active = TRUE",
+                company_id
+            )
+            return [r['id'] for r in records]
+
     async def get_all_active_users(self) -> list:
         """Fallback method for getting all active users if shift isn't used"""
         async with self.pool.acquire() as conn:
@@ -1324,6 +1333,51 @@ class DatabasePG:
                 """, company_id)
                 
             return [row['id'] for row in rows]
+
+    async def check_expired_subscriptions(self) -> int:
+        """Переводит компании с истекшей подпиской в статус expired"""
+        async with self.pool.acquire() as conn:
+            from datetime import datetime
+            from zoneinfo import ZoneInfo
+            now = datetime.now(ZoneInfo("Asia/Almaty"))
+            
+            result = await conn.execute("""
+                UPDATE companies 
+                SET subscription_status = 'expired'
+                WHERE subscription_end < $1 AND subscription_status IN ('active', 'trial')
+            """, now)
+            
+            # Вернуть количество обновленных строк ('UPDATE 5' -> 5)
+            try:
+                updated = int(result.split()[-1])
+                return updated
+            except Exception:
+                return 0
+
+    async def duplicate_company_products(self, source_company_id: int, target_company_id: int) -> int:
+        """Копирует все активные товары от одной компании (шаблона) к другой"""
+        async with self.pool.acquire() as conn:
+            # We explicitly list all columns EXCEPT id, created_at to avoid ID conflicts
+            result = await conn.execute("""
+                INSERT INTO products (
+                    company_id, name_russian, name_internal, 
+                    unit, box_weight, is_active, 
+                    category_id, display_order, price, units_per_box
+                )
+                SELECT 
+                    $2, name_russian, name_internal, 
+                    unit, box_weight, is_active, 
+                    category_id, display_order, price, units_per_box
+                FROM products 
+                WHERE company_id = $1 AND is_active = TRUE
+            """, source_company_id, target_company_id)
+            
+            # Extract number of inserted rows from result string like 'INSERT 0 45'
+            try:
+                inserted = int(result.split()[-1])
+                return inserted
+            except Exception:
+                return 0
 
     async def get_users_with_shift_in_one_hour(self, current_datetime) -> list:
         """
