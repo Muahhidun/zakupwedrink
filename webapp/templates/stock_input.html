@@ -210,9 +210,15 @@
 
 {% block content %}
 <div class="fade-in-up">
-    <div class="date-info">
-        <span class="material-symbols-rounded">calendar_today</span>
-        <span>Текущая дата: <strong id="currentDate">Загрузка...</strong></span>
+    <div class="date-info" style="justify-content: space-between; flex-wrap: wrap;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <span class="material-symbols-rounded">calendar_today</span>
+            <span>Текущая дата: <strong id="currentDate">Загрузка...</strong></span>
+        </div>
+        <div id="adminDateSelectorContainer" style="display: none; align-items: center; gap: 8px;">
+            <label for="adminDateInput" style="font-size: 13px; color: var(--text-secondary); margin-bottom: 0;">Изменить дату:</label>
+            <input type="date" id="adminDateInput" class="form-control" style="width: auto; padding: 4px 8px; font-size: 14px;" onchange="onAdminDateChange()">
+        </div>
     </div>
 
     <!-- Alert for existing data -->
@@ -301,24 +307,32 @@
                 return;
             }
 
-            // Fetch data concurrently
+            // check data first to set workingDate correctly
+            if (!editSubmissionId) {
+                await checkExistingData();
+                
+                // Show admin date picker if allowed
+                if (['admin', 'manager', 'superadmin'].includes(currentUser.role)) {
+                    document.getElementById('adminDateSelectorContainer').style.display = 'flex';
+                    document.getElementById('adminDateInput').value = workingDate;
+                    
+                    // Allow clicking the date text to focus the picker
+                    document.getElementById('currentDate').style.cursor = 'pointer';
+                    document.getElementById('currentDate').style.textDecoration = 'underline';
+                    document.getElementById('currentDate').onclick = () => document.getElementById('adminDateInput').showPicker();
+                }
+            } else {
+                await loadSubmissionData(editSubmissionId);
+            }
+
+            // Fetch data concurrently after setting workingDate
             const promises = [
                 loadProducts(),
                 loadYesterdayStock(),
                 loadTodaySupplies()
             ];
 
-            if (!editSubmissionId) {
-                promises.push(checkExistingData());
-            }
-
             await Promise.all(promises);
-
-            renderTable();
-
-            if (editSubmissionId) {
-                await loadSubmissionData(editSubmissionId);
-            }
 
             if (editSubmissionId && submissionDataMap) {
                 products.forEach(p => {
@@ -339,7 +353,8 @@
 
     async function checkExistingData() {
         try {
-            const res = await fetch('/api/stock/check');
+            const dateParam = workingDate ? `?date=${workingDate}` : '';
+            const res = await fetch(`/api/stock/check${dateParam}`);
             const data = await res.json();
             workingDate = data.working_date;
 
@@ -348,9 +363,42 @@
 
             if (data.exists) {
                 document.getElementById('existingDataAlert').classList.add('show');
+            } else {
+                document.getElementById('existingDataAlert').classList.remove('show');
             }
         } catch (e) {
             console.error(e);
+        }
+    }
+
+    async function onAdminDateChange() {
+        const newDate = document.getElementById('adminDateInput').value;
+        if (!newDate) return;
+        
+        workingDate = newDate;
+        yesterdayStock = {};
+        todaySupplies = {};
+        
+        document.getElementById('stockTableBody').innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 32px;"><span class="material-symbols-rounded" style="animation: spin 1s linear infinite;">sync</span></td></tr>';
+        
+        await checkExistingData();
+        await Promise.all([
+            loadYesterdayStock(),
+            loadTodaySupplies()
+        ]);
+        
+        // Reset all inputs before rendering
+        products.forEach(p => {
+            const input = document.getElementById(`qty-${p.id}`);
+            if (input) input.value = '0';
+        });
+        
+        renderTable();
+        
+        if (document.getElementById('existingDataAlert').classList.contains('show')) {
+            showToast('На выбранную дату уже есть данные.', 'info');
+        } else {
+            showToast(`Данные формы обновлены на ${newDate}`, 'success');
         }
     }
 
@@ -383,8 +431,10 @@
 
     async function loadYesterdayStock() {
         try {
-            const res = await fetch('/api/stock/yesterday');
+            const dateParam = workingDate ? `?date=${workingDate}` : '';
+            const res = await fetch(`/api/stock/yesterday${dateParam}`);
             const data = await res.json();
+            yesterdayStock = {}; // reset before load
             if (data.stock) {
                 data.stock.forEach(item => {
                     yesterdayStock[item.product_id] = item.quantity;
@@ -395,8 +445,10 @@
 
     async function loadTodaySupplies() {
         try {
-            const res = await fetch('/api/supplies/today');
+            const dateParam = workingDate ? `?date=${workingDate}` : '';
+            const res = await fetch(`/api/supplies/today${dateParam}`);
             const data = await res.json();
+            todaySupplies = {}; // reset before load
             if (data.supplies) {
                 todaySupplies = data.supplies;
             }

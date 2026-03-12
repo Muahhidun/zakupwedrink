@@ -701,10 +701,19 @@ async def save_stock(request):
         except ValueError:
             return safe_json_response({'error': 'Invalid User ID format'}, status=400)
 
-        working_date_str = get_working_date()
-        date_obj = datetime.strptime(working_date_str, '%Y-%m-%d').date()
-
         user_role = await db.get_user_role(user_id)
+        
+        custom_date_str = data.get('date')
+        if custom_date_str and user_role in ('admin', 'manager', 'superadmin'):
+            try:
+                date_obj = datetime.strptime(custom_date_str, '%Y-%m-%d').date()
+                working_date_str = custom_date_str
+            except ValueError:
+                return safe_json_response({'error': 'Invalid date format, use YYYY-MM-DD'}, status=400)
+        else:
+            working_date_str = get_working_date()
+            date_obj = datetime.strptime(working_date_str, '%Y-%m-%d').date()
+
 
         if user_role == 'admin':
             for item in stock_items:
@@ -775,8 +784,14 @@ async def check_stock_exists(request):
     """API: Проверить наличие остатков за текущий рабочий день"""
     try:
         company_id = await get_current_company(request)
-        working_date_str = get_working_date()
-        date_obj = datetime.strptime(working_date_str, '%Y-%m-%d').date()
+        
+        custom_date = request.query.get('date')
+        if custom_date:
+            working_date_str = custom_date
+            date_obj = datetime.strptime(working_date_str, '%Y-%m-%d').date()
+        else:
+            working_date_str = get_working_date()
+            date_obj = datetime.strptime(working_date_str, '%Y-%m-%d').date()
 
         exists = await db.has_stock_for_date(company_id, date_obj)
 
@@ -816,8 +831,14 @@ async def get_yesterday_stock(request):
     """АПИ: Получить остатки за последний рабочий день до сегодня"""
     try:
         company_id = await get_current_company(request)
-        working_date_str = get_working_date()
-        date_obj = datetime.strptime(working_date_str, '%Y-%m-%d').date()
+        
+        custom_date = request.query.get('date')
+        if custom_date:
+            working_date_str = custom_date
+            date_obj = datetime.strptime(working_date_str, '%Y-%m-%d').date()
+        else:
+            working_date_str = get_working_date()
+            date_obj = datetime.strptime(working_date_str, '%Y-%m-%d').date()
 
         latest_previous_date = await db.get_latest_date_before(company_id, str(date_obj))
 
@@ -851,8 +872,14 @@ async def get_today_supplies(request):
     """АПИ: Получить поставки между последними остатками и сегодня"""
     try:
         company_id = await get_current_company(request)
-        working_date_str = get_working_date()
-        date_obj = datetime.strptime(working_date_str, '%Y-%m-%d').date()
+        
+        custom_date = request.query.get('date')
+        if custom_date:
+            working_date_str = custom_date
+            date_obj = datetime.strptime(working_date_str, '%Y-%m-%d').date()
+        else:
+            working_date_str = get_working_date()
+            date_obj = datetime.strptime(working_date_str, '%Y-%m-%d').date()
 
         latest_prev = await db.get_latest_date_before(company_id, str(date_obj))
         start_date = latest_prev if latest_prev else str(date_obj)

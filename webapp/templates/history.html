@@ -48,11 +48,12 @@
                         <th style="text-align: right;">Остаток</th>
                         <th style="text-align: right;">Расход (уп.)</th>
                         <th style="text-align: center;">Статус</th>
+                        <th style="text-align: right; width: 60px;"></th>
                     </tr>
                 </thead>
                 <tbody id="historyTableBody">
                     <tr>
-                        <td colspan="4" style="text-align: center; padding: 32px; color: var(--text-tertiary);">Выберите
+                        <td colspan="5" style="text-align: center; padding: 32px; color: var(--text-tertiary);">Выберите
                             товар для просмотра истории</td>
                     </tr>
                 </tbody>
@@ -60,17 +61,49 @@
         </div>
     </div>
 </div>
+
+<!-- Edit Modal -->
+<div id="editHistoryModal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 100; align-items: center; justify-content: center; backdrop-filter: blur(2px);">
+    <div class="card" style="width: 100%; max-width: 400px; margin: 16px; animation: fadeInUp 0.3s ease-out;">
+        <h3 style="margin-top: 0; margin-bottom: 16px; font-size: 18px;">Изменить остаток</h3>
+        <p id="editHistoryInfo" style="color: var(--text-secondary); margin-bottom: 16px; font-size: 14px;"></p>
+        <div class="form-group">
+            <label class="form-label">Количество (упаковок)</label>
+            <input type="number" id="editHistoryQty" class="form-control" step="0.1" min="0">
+        </div>
+        <input type="hidden" id="editHistoryDate">
+        <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 24px;">
+            <button class="btn btn-secondary" onclick="closeEditModal()">Отмена</button>
+            <button class="btn btn-primary" onclick="saveEditHistory()" id="saveEditBtn">Сохранить</button>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
 <script>
+    let currentUser = null;
+    let productsList = [];
+
     document.addEventListener('DOMContentLoaded', async () => {
         try {
+            const userRes = await fetch('/api/user/me');
+            if (userRes.ok) {
+                const data = await userRes.json();
+                currentUser = data.user;
+            } else {
+                // Fallback for Mini App
+                if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initDataUnsafe) {
+                    const tgUser = window.Telegram.WebApp.initDataUnsafe.user;
+                    if (tgUser) currentUser = { id: tgUser.id, role: 'user' }; 
+                }
+            }
+
             const res = await fetch('/api/products');
-            const data = await res.json();
+            productsList = await res.json();
 
             const select = document.getElementById('productSelect');
-            data.forEach(p => {
+            productsList.forEach(p => {
                 const opt = document.createElement('option');
                 opt.value = p.id;
                 opt.textContent = `${p.name_internal} (${p.unit})`;
@@ -132,6 +165,12 @@
                     usageMarkup = `<span class="consumption-negative">+${Math.abs(item.consumption).toFixed(1)}</span>`;
                 }
 
+                let actionMarkup = '';
+                if (currentUser && ['admin', 'manager', 'superadmin'].includes(currentUser.role)) {
+                    const dateStr = item.date.split('T')[0];
+                    actionMarkup = `<button class="btn" style="padding: 4px; font-size: 12px; color: var(--primary);" onclick="openEditModal('${dateStr}', ${item.quantity})" title="Изменить"><span class="material-symbols-rounded" style="font-size: 18px;">edit</span></button>`;
+                }
+
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
                     <td style="font-weight: 500;">
@@ -145,6 +184,9 @@
                     </td>
                     <td style="text-align: center;">
                         ${item.quantity === 0 ? '<span class="badge badge-danger">Пусто</span>' : '<span class="badge badge-success">OK</span>'}
+                    </td>
+                    <td style="text-align: right;">
+                        ${actionMarkup}
                     </td>
                 `;
                 tbody.appendChild(tr);
@@ -219,6 +261,69 @@
                 }
             }
         });
+    }
+
+    function openEditModal(dateStr, currentQty) {
+        const pId = parseInt(document.getElementById('productSelect').value);
+        const prod = productsList.find(p => p.id === pId);
+        const prodName = prod ? prod.name_internal : 'Выбранный товар';
+        
+        document.getElementById('editHistoryDate').value = dateStr;
+        document.getElementById('editHistoryQty').value = currentQty;
+        document.getElementById('editHistoryInfo').innerHTML = `Товар: <strong>${prodName}</strong><br>Дата: <strong>${new Date(dateStr).toLocaleDateString('ru-RU')}</strong>`;
+        
+        document.getElementById('editHistoryModal').style.display = 'flex';
+    }
+
+    function closeEditModal() {
+        document.getElementById('editHistoryModal').style.display = 'none';
+    }
+
+    async function saveEditHistory() {
+        const btn = document.getElementById('saveEditBtn');
+        const qty = parseFloat(document.getElementById('editHistoryQty').value);
+        const dateStr = document.getElementById('editHistoryDate').value;
+        const productId = parseInt(document.getElementById('productSelect').value);
+        
+        if (isNaN(qty) || qty < 0) return showToast('Введите корректное число >= 0', 'warning');
+
+        btn.disabled = true;
+        btn.innerHTML = '<span class="material-symbols-rounded" style="animation: spin 1s linear infinite; font-size: 18px; vertical-align: middle;">sync</span>';
+
+        try {
+            const prod = productsList.find(p => p.id === productId);
+            const weight = prod ? qty * prod.package_weight : qty;
+
+            const payload = {
+                date: dateStr,
+                user_id: currentUser ? currentUser.id : null, 
+                stock: [{
+                    product_id: productId,
+                    quantity: qty,
+                    weight: weight
+                }]
+            };
+
+            const response = await fetch('/api/stock', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload)
+            });
+
+            const result = await response.json();
+            if (result.success) {
+                showToast('История успешно обновлена!', 'success');
+                closeEditModal();
+                loadHistory(); 
+            } else {
+                showToast(result.error || 'Ошибка сохранения', 'error');
+            }
+        } catch(e) {
+            showToast('Сетевая ошибка', 'error');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = 'Сохранить';
+        }
     }
 </script>
 {% endblock %}
