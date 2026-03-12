@@ -1,27 +1,18 @@
-import asyncio, json
-from database_pg import DatabasePG
-import logging
+import asyncio
+import asyncpg
+import os
 
 async def main():
-    db = DatabasePG('postgres://postgres:1234@postgres.railway.internal:5432/railway')
-    await db.connect()
-    
-    shifts = await db.get_shifts(1, '2026-03-01', '2026-03-31')
-    
-    def json_serializer(obj):
-        if hasattr(obj, 'isoformat'):
-            return obj.isoformat()
-        return str(obj)
-        
+    db_url = os.getenv('DATABASE_URL', 'postgresql://zakupwedrink:zakupwedrink123@localhost:5432/zakupwedrink')
+    db_url = db_url.replace("localhost", "127.0.0.1")
     try:
-        j = json.dumps(shifts, default=json_serializer)
-        print("SUCCESS")
+        conn = await asyncpg.connect(db_url)
+        users = await conn.fetch("SELECT id, username, first_name, role FROM users LIMIT 10")
+        for u in users:
+            print(dict(u))
+        await conn.close()
     except Exception as e:
-        print(f"FAILED TO SERIALIZE: {e}")
-        for s in shifts:
-            print(s)
-            
-    await db.close()
+        print(f"Error: {e}")
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     asyncio.run(main())

@@ -1307,16 +1307,16 @@ class DatabasePG:
         """
         async with self.pool.acquire() as conn:
             shifts_today = await conn.fetchval("""
-                SELECT COUNT(*) FROM shifts WHERE company_id = $1 AND date = $2
+                SELECT COUNT(*) FROM shifts WHERE company_id = $1 AND date = $2::DATE
             """, company_id, date_str)
             
             if shifts_today > 0:
                 rows = await conn.fetch("""
                     SELECT DISTINCT u.id 
                     FROM users u
-                    LEFT JOIN shifts s ON u.id = s.user_id AND s.date = $2
+                    LEFT JOIN shifts s ON u.id = s.user_id AND s.date = $2::DATE
                     WHERE u.is_active = TRUE AND u.company_id = $1
-                      AND (s.id IS NOT NULL OR u.role IN ('admin', 'manager'))
+                      AND (s.id IS NOT NULL OR u.role IN ('admin', 'manager', 'superadmin'))
                 """, company_id, date_str)
             else:
                 rows = await conn.fetch("""
