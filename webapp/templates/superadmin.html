@@ -6,18 +6,18 @@
 {% block content %}
 <div class="fade-in-up">
     <!-- Header Area -->
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 32px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 32px; flex-wrap: wrap; gap: 16px;">
         <div>
             <h2 style="font-size: 24px; font-weight: 700; color: var(--text-primary); margin-bottom: 4px;">Платформа
                 WeDrink</h2>
             <p style="color: var(--text-secondary); font-size: 14px; margin: 0;">Super-Admin Dashboard</p>
         </div>
-        <div style="display: flex; gap: 12px;">
-            <button class="btn btn-primary" onclick="showNewProductModal()" style="background: var(--neutral); border: none;">
-                <span class="material-symbols-rounded">inventory_2</span> Добавить товар
+        <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+            <button class="btn" onclick="showNewProductModal()" style="background: white; color: var(--text-primary); border: 1px solid var(--border-color); display: flex; align-items: center; gap: 6px;">
+                <span class="material-symbols-rounded" style="font-size: 20px;">inventory_2</span> Добавить товар
             </button>
-            <button class="btn btn-primary" onclick="showNewCompanyModal()">
-                <span class="material-symbols-rounded">add</span> Новая компания
+            <button class="btn btn-primary" onclick="showNewCompanyModal()" style="display: flex; align-items: center; gap: 6px;">
+                <span class="material-symbols-rounded" style="font-size: 20px;">add</span> Новая компания
             </button>
         </div>
     </div>
@@ -459,6 +459,9 @@
             const data = await response.json();
             if (response.ok && data.success) {
                 window.location.reload();
+            } else {
+                alert('Ошибка: ' + (data.error || 'Неизвестная ошибка'));
+            }
         } catch (error) {
             console.error('Error:', error);
             alert('Сетевая ошибка при удалении');
