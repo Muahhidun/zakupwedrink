@@ -123,7 +123,7 @@ async def get_current_user(request):
                 if user_info and not user_info.get('is_active', True):
                     return None
                     
-                return {
+                user_dict = {
                     'id': user_id,
                     'username': tg_user.get('username'),
                     'first_name': tg_user.get('first_name'),
@@ -133,6 +133,11 @@ async def get_current_user(request):
                     'company_id': company_id,
                     'is_active': user_info.get('is_active', True) if user_info else True
                 }
+                
+                # Сохраняем пользователя в сессию, чтобы при навигации по страницам (напр. /staff) он не разлогинивался
+                session = await aiohttp_session.get_session(request)
+                session['user'] = user_dict
+                return user_dict
 
     # 2. Иначе проверяем Cookie сессию (для обычного браузера)
     session = await aiohttp_session.get_session(request)
@@ -338,7 +343,8 @@ async def login_page(request):
     
     context = {
         'bot_username': bot_username,
-        'auth_url': auth_url
+        'auth_url': auth_url,
+        'request': request
     }
     
     return aiohttp_jinja2.render_template('login.html', request, context)
