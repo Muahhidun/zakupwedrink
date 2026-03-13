@@ -105,15 +105,64 @@
         <p>Войдите через Telegram, чтобы получить доступ к складу, заказам и аналитике.</p>
         {% endif %}
 
-        <div class="widget-container">
+        <div class="widget-container" id="login-widget-container">
             <script async src="https://telegram.org/js/telegram-widget.js?22" data-telegram-login="{{ bot_username }}"
                 data-size="large" data-auth-url="{{ auth_url }}" data-request-access="write"></script>
+        </div>
+
+        <div id="loading-container" style="display: none; text-align: center; margin-top: 20px;">
+            <div style="margin-bottom: 10px; color: var(--primary);">
+                <span class="material-symbols-rounded" style="animation: spin 1s linear infinite; font-size: 32px;">sync</span>
+            </div>
+            <div style="color: var(--text-secondary); font-size: 14px;">Выполняется вход через Telegram...</div>
         </div>
 
         <div class="footer">
             &copy; 2026 WeDrink Team
         </div>
     </div>
-</body>
+    <script>
+        document.addEventListener('DOMContentLoaded', async () => {
+            // Check if we are inside Telegram WebApp
+            if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData) {
+                // We are inside the WebApp! Let's auto-login seamlessly via API
+                document.getElementById('login-widget-container').style.display = 'none';
+                document.getElementById('loading-container').style.display = 'block';
+                
+                // Optional: expand the WebApp to full height for better UX
+                window.Telegram.WebApp.expand();
 
+                try {
+                    const response = await fetch('/api/auth/webapp_auto', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'x-telegram-init-data': window.Telegram.WebApp.initData
+                        }
+                    });
+
+                    if (response.ok) {
+                        const result = await response.json();
+                        if (result.success) {
+                            // Backend successfully verified initData and set the session cookie
+                            // Redirect user back to the dashboard/index
+                            window.location.href = '/';
+                        } else {
+                            // If auto-login failed for some reason (e.g., user not found), fall back to normal widget
+                            document.getElementById('loading-container').style.display = 'none';
+                            document.getElementById('login-widget-container').style.display = 'flex';
+                            console.error('Auto login failed:', result.error);
+                        }
+                    } else {
+                        throw new Error('Server returned ' + response.status);
+                    }
+                } catch (e) {
+                    console.error('Network error during auto-login:', e);
+                    document.getElementById('loading-container').style.display = 'none';
+                    document.getElementById('login-widget-container').style.display = 'flex';
+                }
+            }
+        });
+    </script>
+</body>
 </html>

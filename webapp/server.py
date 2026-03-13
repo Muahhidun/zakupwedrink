@@ -172,6 +172,7 @@ async def auth_middleware(request, handler):
     """Мидлвар для проверки авторизации"""
     public_paths = [
         '/api/auth/telegram',
+        '/api/auth/webapp_auto',
         '/login',
         '/static',
         '/favicon.ico',
@@ -260,6 +261,49 @@ def verify_telegram_webapp(init_data: str, bot_token: str) -> dict | None:
     except Exception as e:
         print(f"❌ Error parsing Telegram WebApp data: {e}")
         return None
+
+
+async def webapp_auto_login(request):
+    """API: Автоматический вход через Telegram WebApp initData (на странице /login)"""
+    init_data = request.headers.get('x-telegram-init-data')
+    if not init_data:
+        # Пытаемся взять из JSON, если прислали в теле
+        try:
+            body = await request.json()
+            init_data = body.get('init_data')
+        except:
+            pass
+
+    if not init_data:
+        return safe_json_response({'error': 'No initData provided'}, status=400)
+
+    bot_token = os.getenv('BOT_TOKEN')
+    tg_user = verify_telegram_webapp(init_data, bot_token)
+    
+    if not tg_user:
+        return safe_json_response({'error': 'Invalid initData'}, status=403)
+        
+    user_id = tg_user.get('id')
+    user_info = await db.get_user_info(user_id)
+    
+    if not user_info:
+        return safe_json_response({'error': 'User not found or no company assigned'}, status=403)
+        
+    if not user_info.get('is_active', True):
+        return safe_json_response({'error': 'User is inactive'}, status=403)
+        
+    # Устанавливаем cookie сессию!
+    session = await aiohttp_session.get_session(request)
+    user_dict = {
+        'id': user_info['id'],
+        'username': user_info.get('username'),
+        'first_name': user_info.get('first_name'),
+        'role': user_info.get('role', 'employee'),
+        'company_id': user_info.get('company_id')
+    }
+    session['user'] = user_dict
+    
+    return safe_json_response({'success': True, 'user': user_dict})
 
 
 async def telegram_login(request):
@@ -1524,6 +1568,9 @@ def create_app():
     
     # API endpoints
     app.router.add_get('/api/auth/telegram', telegram_login)
+    app.router.add_post('/api/auth/webapp_auto', webapp_auto_login)
+
+    # API - User -> /api/user/*me', get_current_user_api)
     app.router.add_get('/api/user/me', get_current_user_api)
     app.router.add_get('/api/orders/generate', generate_order_api)
     app.router.add_get('/api/history/{product_id}', get_history_api)
