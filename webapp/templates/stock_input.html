@@ -334,17 +334,9 @@
 
             await Promise.all(promises);
 
-            renderTable();
+            renderTable(submissionDataMap);
 
             if (editSubmissionId && submissionDataMap) {
-                products.forEach(p => {
-                    const input = document.getElementById(`qty-${p.id}`);
-                    if (input && submissionDataMap[p.id] !== undefined) {
-                        input.value = submissionDataMap[p.id];
-                        updateConsumption(p.id);
-                    }
-                });
-
                 document.getElementById('saveBtn').innerHTML = '<span class="material-symbols-rounded">save</span> Сохранить изменения';
             }
         } catch (e) {
@@ -388,12 +380,6 @@
             loadYesterdayStock(),
             loadTodaySupplies()
         ]);
-        
-        // Reset all inputs before rendering
-        products.forEach(p => {
-            const input = document.getElementById(`qty-${p.id}`);
-            if (input) input.value = '0';
-        });
         
         renderTable();
         
@@ -457,7 +443,7 @@
         } catch (e) { }
     }
 
-    function renderTable() {
+    function renderTable(initialValues = null) {
         const tbody = document.getElementById('stockTableBody');
         tbody.innerHTML = '';
 
@@ -471,6 +457,11 @@
             const supp = todaySupplies[p.id] || 0;
             const expected = yest + supp;
             const expectedDisplay = expected > 0 ? expected.toFixed(1) : '-';
+
+            let inputValue = '0';
+            if (initialValues && initialValues[p.id] !== undefined) {
+                inputValue = initialValues[p.id];
+            }
 
             const tr = document.createElement('tr');
             tr.innerHTML = `
@@ -491,7 +482,7 @@
                     <input type="number" 
                            id="qty-${p.id}" 
                            class="qty-input" 
-                           min="0" step="0.1" value="0" 
+                           min="0" step="0.1" value="${inputValue}" 
                            inputmode="decimal"
                            onfocus="if(this.value=='0') this.value=''"
                            onblur="if(this.value=='') this.value='0'; updateConsumption(${p.id})"
@@ -499,6 +490,11 @@
                 </td>
             `;
             tbody.appendChild(tr);
+            
+            // initialize consumption text right after adding to DOM
+            setTimeout(() => {
+                updateConsumption(p.id);
+            }, 0);
         });
     }
 
