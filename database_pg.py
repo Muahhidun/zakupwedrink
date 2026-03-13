@@ -1209,11 +1209,12 @@ class DatabasePG:
         async with self.pool.acquire() as conn:
             await conn.execute("""
                 INSERT INTO products 
-                (company_id, name_chinese, name_russian, name_internal, package_weight, units_per_box, box_weight, price_per_box, unit)
+                (company_id, name_chinese, name_russian, name_internal, package_weight, units_per_box, box_weight, price_per_box, unit, is_global)
                 SELECT 
-                    $1, name_chinese, name_russian, name_internal, package_weight, units_per_box, box_weight, price_per_box, unit
+                    $1, name_chinese, name_russian, name_internal, package_weight, units_per_box, box_weight, price_per_box, unit, TRUE
                 FROM products 
-                WHERE company_id = 1
+                WHERE company_id = 1 AND is_global = TRUE
+                ON CONFLICT (company_id, name_internal) DO NOTHING
             """, target_company_id)
 
     async def update_company_subscription(self, company_id: int, status: str, days_to_add: int = None):
