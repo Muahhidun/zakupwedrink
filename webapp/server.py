@@ -496,6 +496,19 @@ async def get_daily_report_api(request):
         print(f"Ошибка API отчета: {e}")
         return safe_json_response({'error': str(e)}, status=500)
 
+async def expired_page(request):
+    """Страница истекшей подписки"""
+    user = await get_current_user(request)
+    if not user:
+        raise web.HTTPFound('/login')
+        
+    bot_username = os.getenv('BOT_USERNAME', 'Zakupformbot')
+    context = {
+        'user': user,
+        'bot_username': bot_username
+    }
+    return aiohttp_jinja2.render_template('expired.html', request, context)
+
 async def get_weekly_report_api(request):
     """API: Отчет за неделю"""
     try:

@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 
 from database import Database as SQLiteDB
 from database_pg import DatabasePG
-from handlers import start, stock, orders, reports, supply, products, history, migrate, average_consumption, fix_cones, delete_duplicate
+from handlers import start, stock, orders, reports, supply, products, history, migrate, average_consumption, fix_cones, delete_duplicate, payment
 from scheduler import setup_scheduler
 from webapp.server import create_app
 
@@ -122,6 +122,7 @@ async def main():
     dp.include_router(average_consumption.router)
     dp.include_router(fix_cones.router)
     dp.include_router(delete_duplicate.router)
+    dp.include_router(payment.router)
 
     # Новые роутеры для системы ролей и модерации
     from handlers import moderation, users

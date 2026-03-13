@@ -1408,6 +1408,37 @@ class DatabasePG:
             
             return [dict(r) for r in rows]
 
+    async def get_company(self, company_id: int) -> Optional[Dict]:
+        """Получить информацию о компании"""
+        async with self.pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT id, name, name_internal, name_russian, subscription_status, subscription_end "
+                "FROM companies WHERE id = $1", company_id
+            )
+            return dict(row) if row else None
+
+    async def extend_company_subscription(self, company_id: int, days_to_add: int) -> bool:
+        """Продление подписки компании (или активация, если была отключена)"""
+        async with self.pool.acquire() as conn:
+            from datetime import timedelta
+            from zoneinfo import ZoneInfo
+            
+            # Получаем текущую дату окончания
+            current_end = await conn.fetchval("SELECT subscription_end FROM companies WHERE id = $1", company_id)
+            now = datetime.now(ZoneInfo("Asia/Almaty")).replace(tzinfo=None)
+            
+            # Если подписка истекла или ее не было, отсчитываем от сегодня
+            if not current_end or current_end < now:
+                new_end = now + timedelta(days=days_to_add)
+            else:
+                new_end = current_end + timedelta(days=days_to_add)
+                
+            result = await conn.execute(
+                "UPDATE companies SET subscription_status = 'active', subscription_end = $1 WHERE id = $2",
+                new_end, company_id
+            )
+            return result.startswith("UPDATE")
+
     async def duplicate_company_products(self, source_company_id: int, target_company_id: int) -> int:
         """Копирует все активные товары от одной компании (шаблона) к другой"""
         async with self.pool.acquire() as conn:

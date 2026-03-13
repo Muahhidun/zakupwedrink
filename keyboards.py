@@ -36,36 +36,15 @@ def get_main_menu(is_private_chat: bool = True, user_role: str = 'employee') -> 
             resize_keyboard=True,
             input_field_placeholder="Введите остатки"
         )
-    else:
-        # АДМИН - полное меню
+        # АДМИН - оставляем только кнопку перехода в веб-апп, все остальное он сделает там
         keyboard = ReplyKeyboardMarkup(
             keyboard=[
                 [
-                    KeyboardButton(text="📝 Ввести остатки", web_app=WebAppInfo(url=web_app_url)),
-                    KeyboardButton(text="📋 Модерация")
-                ],
-                [
-                    KeyboardButton(text="📈 Средний расход"),
-                    KeyboardButton(text="📦 Текущие остатки"),
-                ],
-                [
-                    KeyboardButton(text="📦 Добавить поставку"),
-                    KeyboardButton(text="🛒 Список закупа"),
-                ],
-                [
-                    KeyboardButton(text="📦 Заказы в пути"),
-                    KeyboardButton(text="➕ Добавить заказ"),
-                ],
-                [
-                    KeyboardButton(text="💰 Отчеты"),
-                    KeyboardButton(text="📊 Аналитика"),
-                ],
-                [
-                    KeyboardButton(text="👥 Управление"),
-                ],
+                    KeyboardButton(text="💎 Открыть Управление", web_app=WebAppInfo(url=web_app_url))
+                ]
             ],
             resize_keyboard=True,
-            input_field_placeholder="Выберите действие"
+            input_field_placeholder="Откройте панель управления"
         )
 
     return keyboard
