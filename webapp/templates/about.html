@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>WeDrink Закуп — Умный помощник для Вашей точки</title>
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- Material Symbols -->
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet" />
+
+    <style>
+        :root {
+            /* Branding colors matching the main app but enhanced for LP */
+            --bg-color: #F8FAFC;
+            --text-primary: #0F172A;
+            --text-secondary: #475569;
+            --primary-blue: #2563EB;
+            --primary-hover: #1D4ED8;
+            --accent-blue: #E0E7FF;
+            --card-bg: #FFFFFF;
+            --border-color: #E2E8F0;
+            --glass-bg: rgba(255, 255, 255, 0.85);
+            --gradient-primary: linear-gradient(135deg, #1E40AF 0%, #3B82F6 100%);
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg-color: #0B1120;
+                --text-primary: #F8FAFC;
+                --text-secondary: #94A3B8;
+                --primary-blue: #3B82F6;
+                --primary-hover: #60A5FA;
+                --accent-blue: #1E3A8A;
+                --card-bg: #1E293B;
+                --border-color: #334155;
+                --glass-bg: rgba(30, 41, 59, 0.7);
+                --gradient-primary: linear-gradient(135deg, #3B82F6 0%, #60A5FA 100%);
+            }
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        /* Nav */
+        nav {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: var(--glass-bg);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--border-color);
+            z-index: 1000;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 5%;
+            transition: all 0.3s ease;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-weight: 700;
+            font-size: 1.25rem;
+            color: var(--text-primary);
+            text-decoration: none;
+        }
+
+        .logo img {
+            height: 32px;
+            border-radius: 8px;
+        }
+
+        .nav-actions {
+            display: flex;
+            gap: 16px;
+            align-items: center;
+        }
+
+        /* Buttons */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 12px 24px;
+            border-radius: 12px;
+            font-weight: 600;
+            font-size: 15px;
+            text-decoration: none;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            border: none;
+        }
+
+        .btn-primary {
+            background: var(--gradient-primary);
+            color: #FFFFFF;
+            box-shadow: 0 4px 14px rgba(37, 99, 235, 0.25);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(37, 99, 235, 0.4);
+            filter: brightness(1.1);
+        }
+
+        .btn-secondary {
+            background: var(--accent-blue);
+            color: var(--primary-blue);
+        }
+
+        .btn-secondary:hover {
+            background: var(--card-bg);
+            border: 1px solid var(--primary-blue);
+        }
+
+        /* Hero Section */
+        .hero {
+            padding: 160px 5% 80px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            position: relative;
+        }
+
+        /* Decorative background blur */
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: 20%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 600px;
+            height: 600px;
+            background: radial-gradient(circle, rgba(37,99,235,0.1) 0%, rgba(255,255,255,0) 70%);
+            z-index: -1;
+            filter: blur(40px);
+            pointer-events: none;
+        }
+
+        .hero h1 {
+            font-size: 3.5rem;
+            font-weight: 800;
+            line-height: 1.1;
+            letter-spacing: -0.02em;
+            margin-bottom: 24px;
+            max-width: 800px;
+            background: var(--gradient-primary);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .hero p {
+            font-size: 1.25rem;
+            color: var(--text-secondary);
+            max-width: 600px;
+            margin-bottom: 40px;
+        }
+
+        /* Features Section */
+        .features {
+            padding: 80px 5%;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .section-title {
+            text-align: center;
+            font-size: 2.5rem;
+            font-weight: 800;
+            margin-bottom: 60px;
+        }
+
+        .grid-3 {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 32px;
+        }
+
+        .feature-card {
+            background: var(--card-bg);
+            border-radius: 20px;
+            padding: 32px;
+            border: 1px solid var(--border-color);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .feature-card:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 20px 40px rgba(0,0,0,0.08);
+            border-color: var(--primary-blue);
+        }
+
+        .feature-icon {
+            width: 56px;
+            height: 56px;
+            border-radius: 16px;
+            background: var(--accent-blue);
+            color: var(--primary-blue);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+        }
+
+        .feature-card h3 {
+            font-size: 1.25rem;
+            font-weight: 700;
+        }
+
+        .feature-card p {
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+        }
+
+        /* How it works */
+        .how-it-works {
+            padding: 80px 5%;
+            background: var(--card-bg);
+            border-top: 1px solid var(--border-color);
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .steps {
+            max-width: 800px;
+            margin: 0 auto;
+            position: relative;
+        }
+
+        .step {
+            display: flex;
+            gap: 24px;
+            margin-bottom: 48px;
+            position: relative;
+        }
+
+        .step:last-child {
+            margin-bottom: 0;
+        }
+
+        .step-number {
+            width: 48px;
+            height: 48px;
+            flex-shrink: 0;
+            background: var(--primary-blue);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.25rem;
+            font-weight: 800;
+            position: relative;
+            z-index: 2;
+            box-shadow: 0 0 0 8px var(--card-bg);
+        }
+
+        .step::after {
+            content: '';
+            position: absolute;
+            top: 48px;
+            bottom: -48px;
+            left: 23px;
+            width: 2px;
+            background: var(--border-color);
+            z-index: 1;
+        }
+
+        .step:last-child::after {
+            display: none;
+        }
+
+        .step-content {
+            padding-top: 10px;
+        }
+
+        .step-content h3 {
+            font-size: 1.25rem;
+            margin-bottom: 8px;
+        }
+
+        .step-content p {
+            color: var(--text-secondary);
+        }
+
+        /* CTA Section */
+        .cta {
+            padding: 100px 5%;
+            text-align: center;
+            background: var(--gradient-primary);
+            color: white;
+        }
+
+        .cta h2 {
+            font-size: 3rem;
+            font-weight: 800;
+            margin-bottom: 24px;
+        }
+
+        .cta p {
+            font-size: 1.25rem;
+            opacity: 0.9;
+            margin-bottom: 40px;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .cta .btn-primary {
+            background: white;
+            color: var(--primary-blue);
+        }
+
+        .cta .btn-primary:hover {
+            box-shadow: 0 8px 25px rgba(255, 255, 255, 0.4);
+        }
+
+        /* Footer */
+        footer {
+            padding: 40px 5%;
+            text-align: center;
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            background: var(--bg-color);
+        }
+
+        /* Animations */
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .animate {
+            animation: fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+
+        .delay-1 { animation-delay: 0.1s; }
+        .delay-2 { animation-delay: 0.2s; }
+        .delay-3 { animation-delay: 0.3s; }
+
+        @media (max-width: 768px) {
+            .hero h1 { font-size: 2.5rem; }
+            .hero { padding: 120px 5% 60px; }
+            .section-title { font-size: 2rem; }
+            .cta h2 { font-size: 2.25rem; }
+            .step::after { left: 23px; }
+            .nav-actions .btn-secondary {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <nav>
+        <a href="/" class="logo">
+            <span class="material-symbols-rounded" style="color: var(--primary-blue); font-size: 32px;">water_drop</span>
+            WeDrink Закуп
+        </a>
+        <div class="nav-actions">
+            <a href="/login" class="btn btn-secondary">
+                <span class="material-symbols-rounded" style="font-size: 20px;">login</span> Вход
+            </a>
+            <a href="https://t.me/Zakupformbot" target="_blank" class="btn btn-primary">
+                Попробовать
+            </a>
+        </div>
+    </nav>
+
+    <section class="hero">
+        <h1 class="animate">Никакого хаоса с накладными. Полный контроль за 5 секунд.</h1>
+        <p class="animate delay-1">Закрытая система управления закупками и остатками, созданная специально для франшиз WeDrink. Работайте в Telegram, считайте автоматически.</p>
+        <div class="animate delay-2" style="display: flex; gap: 16px; flex-wrap: wrap; justify-content: center;">
+            <a href="#how-it-works" class="btn btn-primary" style="padding: 16px 32px; font-size: 16px;">
+                Как это работает?
+            </a>
+            <a href="/login" class="btn btn-secondary" style="background: var(--card-bg); border: 1px solid var(--border-color); padding: 16px 32px; font-size: 16px;">
+                Войти в кабинет
+            </a>
+        </div>
+    </section>
+
+    <section class="features" id="features">
+        <h2 class="section-title">Почему владельцы WeDrink выбирают нас</h2>
+        <div class="grid-3">
+            <div class="feature-card">
+                <div class="feature-icon">
+                    <span class="material-symbols-rounded">calculate</span>
+                </div>
+                <h3>Умный автозаказ</h3>
+                <p>Система сама проанализирует остатки, приход и рассчитает, сколько товара нужно заказать на следующие 14 дней, учитывая текущие запасы.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">
+                    <span class="material-symbols-rounded">phone_iphone</span>
+                </div>
+                <h3>Всё в Telegram</h3>
+                <p>Вашим бариста не нужно скачивать новые приложения или учить сложные системы. Они отправляют остатки в два клика прямо через Telegram Мини-Апп.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">
+                    <span class="material-symbols-rounded">admin_panel_settings</span>
+                </div>
+                <h3>Полный контроль</h3>
+                <p>Вы как владелец видите всю картину: кто сдал смену, какие были расходы, какие заявки отправлены. Удобный дашборд с компьютера и с телефона.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">
+                    <span class="material-symbols-rounded">inventory_2</span>
+                </div>
+                <h3>Единая база товаров</h3>
+                <p>Все стандарты сырья, вес упаковок и единицы измерения WeDrink уже заложены в систему. Не нужно настраивать номенклатуру с нуля.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">
+                    <span class="material-symbols-rounded">notifications_active</span>
+                </div>
+                <h3>Напоминания сотрудникам</h3>
+                <p>Бот сам напишет вашим сотрудникам, если они забыли сдать остатки в конце смены. Больше никаких звонков и сообщений в WhatsApp.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">
+                    <span class="material-symbols-rounded">history</span>
+                </div>
+                <h3>История расходов</h3>
+                <p>Прозрачная история по каждой позиции по дням. Вы всегда знаете, куда ушел товар и сможете вовремя заметить недостачу.</p>
+            </div>
+        </div>
+    </section>
+
+    <section class="how-it-works" id="how-it-works">
+        <h2 class="section-title">Как это работает на практике</h2>
+        <div class="steps">
+            <div class="step">
+                <div class="step-number">1</div>
+                <div class="step-content">
+                    <h3>Бариста сдает смену в Telegram</h3>
+                    <p>В конце дня сотрудник открывает Telegram-бота и вводит фактическое количество упаковок на складе. Система сразу показывает расхождения с ожидаемым остатком.</p>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">2</div>
+                <div class="step-content">
+                    <h3>Вы получаете уведомление</h3>
+                    <p>Вам в Telegram моментально приходит уведомление о сдаче смены. Вы можете зайти в веб-кабинет и одной кнопкой "Одобрить" заявку.</p>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">3</div>
+                <div class="step-content">
+                    <h3>Система считает заказ</h3>
+                    <p>В день закупа вы нажимаете кнопку "Заказ". Платформа складывает все ваши остатки, анализирует расход и выдает готовый список Excel/PDF к отправке поставщику.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="cta">
+        <h2>Попробуйте прямо сейчас</h2>
+        <p>Начните использовать систему для своей точки и забудьте о рутинных подсчетах.</p>
+        <a href="https://t.me/Zakupformbot" target="_blank" class="btn btn-primary" style="padding: 16px 40px; font-size: 1.1rem;">
+            Открыть в Telegram <span class="material-symbols-rounded">open_in_new</span>
+        </a>
+    </section>
+
+    <footer>
+        <p>© 2026 WeDrink Закуп. Платформа для учета товарных остатков и автоматизации заказов.<br>Не является официальным продуктом управляющей компании.</p>
+    </footer>
+
+</body>
+</html>

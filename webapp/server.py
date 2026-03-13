@@ -169,7 +169,8 @@ async def auth_middleware(request, handler):
         '/api/auth/telegram',
         '/login',
         '/static',
-        '/favicon.ico'
+        '/favicon.ico',
+        '/about'
     ]
     
     if request.path.startswith('/api/') and 'x-telegram-init-data' in request.headers:
@@ -360,6 +361,10 @@ async def dashboard_page(request):
     context = {'user': user}
     return aiohttp_jinja2.render_template('dashboard.html', request, context)
 
+
+async def about_page(request):
+    """Страница лендинга для SaaS"""
+    return aiohttp_jinja2.render_template('about.html', request, {})
 
 async def stock_input_page(request):
     user = await get_current_user(request)
