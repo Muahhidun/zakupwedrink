@@ -302,8 +302,14 @@ async def telegram_login(request):
         print(f"❌ Error: Вход заблокирован для удаленного пользователя {user_id}")
         raise web.HTTPFound('/login?error=inactive')
         
+    company_id = user_info.get('company_id') if user_info else None
+    
+    if not company_id:
+        # Если у пользователя нет компании, выкидываем его на логин с ошибкой (защита от "посторонних")
+        print(f"❌ Error: Вход заблокирован для пользователя без привязанной компании {user_id}")
+        raise web.HTTPFound('/login?error=no_company')
+        
     role = await db.get_user_role(user_id)
-    company_id = user_info.get('company_id') if user_info and user_info.get('company_id') else 1
     
     session = await aiohttp_session.get_session(request)
     session['user'] = {

@@ -30,12 +30,12 @@ def get_main_menu(is_private_chat: bool = True, user_role: str = 'employee') -> 
         # СОТРУДНИК - только ввод и свои заявки
         keyboard = ReplyKeyboardMarkup(
             keyboard=[
-                [KeyboardButton(text="📝 Ввести остатки", web_app=WebAppInfo(url=web_app_url))],
-                [KeyboardButton(text="📦 Мои заявки")],
+                [KeyboardButton(text="📝 Ввести остатки", web_app=WebAppInfo(url=web_app_url))]
             ],
             resize_keyboard=True,
             input_field_placeholder="Введите остатки"
         )
+    else:
         # АДМИН - оставляем только кнопку перехода в веб-апп, все остальное он сделает там
         keyboard = ReplyKeyboardMarkup(
             keyboard=[
