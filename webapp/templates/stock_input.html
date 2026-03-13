@@ -334,6 +334,8 @@
 
             await Promise.all(promises);
 
+            renderTable();
+
             if (editSubmissionId && submissionDataMap) {
                 products.forEach(p => {
                     const input = document.getElementById(`qty-${p.id}`);
