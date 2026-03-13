@@ -1479,6 +1479,7 @@ def create_app():
 
     # Pages routes
     app.router.add_get('/', index)
+    app.router.add_get('/about', about_page)
     app.router.add_get('/login', login_page)
     app.router.add_get('/logout', logout)
     app.router.add_get('/dashboard', dashboard_page)
