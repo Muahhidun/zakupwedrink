@@ -365,7 +365,9 @@ async def stock_input_page(request):
     user = await get_current_user(request)
     if not user:
         raise web.HTTPFound('/login')
-    context = {'user': user, 'edit_submission_id': None}
+    
+    edit_id = request.query.get('edit_submission_id')
+    context = {'user': user, 'edit_submission_id': edit_id}
     return aiohttp_jinja2.render_template('stock_input.html', request, context)
 
 async def submission_edit_page(request):
