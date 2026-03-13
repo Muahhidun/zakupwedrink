@@ -282,6 +282,73 @@ async def check_expired_trials_and_subscriptions():
     except Exception as e:
         logger.error(f"❌ Ошибка в check_expired_trials_and_subscriptions: {e}")
 
+async def check_expiring_subscriptions_and_notify(bot: Bot):
+    """
+    Проверяет подписки, которые истекают через 3 дня и 0 дней,
+    и отправляет напоминание администраторам точки с кнопкой оплаты.
+    """
+    try:
+        from database_pg import DatabasePG
+        database_url = os.getenv('DATABASE_URL')
+        if not database_url:
+            return
+            
+        db = DatabasePG(database_url)
+        await db.init_db()
+
+        # 1. Проверяем те, у кого осталось ровно 3 дня
+        expiring_in_3_days = await db.get_expiring_subscriptions(days_left=3)
+        # 2. Проверяем те, у кого осталось 0 дней (истекает сегодня или уже истекла)
+        expiring_today = await db.get_expiring_subscriptions(days_left=0)
+
+        # Функция для рассылки
+        async def notify_admins(companies, days_left):
+            for company in companies:
+                company_id = company['id']
+                company_name = company['name_russian'] or company['name_internal']
+                
+                # Формируем текст
+                if days_left == 0:
+                    text = (
+                        f"⚠️ <b>Внимание!</b>\n\n"
+                        f"Подписка для точки <b>«{company_name}»</b> отключена или истекает сегодня.\n\n"
+                        f"Чтобы не потерять доступ к дашборду и Telegram-боту, пожалуйста, оплатите продление подписки."
+                    )
+                else:
+                    text = (
+                        f"🔔 <b>Напоминание о подписке</b>\n\n"
+                        f"Подписка для точки <b>«{company_name}»</b> истекает через <b>{days_left} дня</b>.\n\n"
+                        f"Чтобы работа не прерывалась, пожалуйста, заранее оплатите продление."
+                    )
+
+                # Добавляем кнопку оплаты (с callback data для FSM)
+                keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="💳 Оплатить подписку (Kaspi)", callback_data=f"pay_subscription_{company_id}")]
+                ])
+
+                admin_ids = await db.get_admins_for_company(company_id)
+                for admin_id in admin_ids:
+                    try:
+                        await bot.send_message(
+                            chat_id=admin_id,
+                            text=text,
+                            parse_mode="HTML",
+                            reply_markup=keyboard
+                        )
+                    except Exception as e:
+                        logger.error(f"❌ Ошибка при отправке уведомления об оплате админу {admin_id}: {e}")
+
+        # Отправляем уведомления
+        await notify_admins(expiring_in_3_days, 3)
+        await notify_admins(expiring_today, 0)
+
+        await db.close()
+
+    except Exception as e:
+        logger.error(f"❌ Ошибка в check_expiring_subscriptions_and_notify: {e}")
+        import traceback
+        traceback.print_exc()
+
 def setup_scheduler(bot: Bot) -> AsyncIOScheduler:
     """
     Настроить и запустить планировщик задач
@@ -297,6 +364,17 @@ def setup_scheduler(bot: Bot) -> AsyncIOScheduler:
         replace_existing=True
     )
     logger.info("📅 Проверка подписок настроена на 00:05")
+
+    # Уведомления об оплате каждый день в 10:00 утра
+    scheduler.add_job(
+        check_expiring_subscriptions_and_notify,
+        trigger=CronTrigger(hour=10, minute=0, timezone="Asia/Almaty"),
+        args=[bot],
+        id='notify_expiring_subs',
+        name='Напоминание об оплате подписки (10:00)',
+        replace_existing=True
+    )
+    logger.info("💸 Напоминания об оплате подписок настроены на 10:00")
 
     # Добавляем напоминания на разное время
     reminders = [

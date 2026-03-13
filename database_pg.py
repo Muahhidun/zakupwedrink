@@ -1380,6 +1380,34 @@ class DatabasePG:
             except Exception:
                 return 0
 
+    async def get_expiring_subscriptions(self, days_left: int) -> list:
+        """Получает компании, подписка которых истекает ровно через X дней (или менее, если days_left=0)"""
+        async with self.pool.acquire() as conn:
+            from datetime import timedelta
+            from zoneinfo import ZoneInfo
+            now = datetime.now(ZoneInfo("Asia/Almaty")).date()
+            
+            if days_left == 0:
+                # Истекает сегодня или уже истекла, но статус еще не обновился
+                target_date = now
+                rows = await conn.fetch("""
+                    SELECT id, name_internal, name_russian, subscription_status, subscription_end
+                    FROM companies
+                    WHERE subscription_status IN ('active', 'trial') 
+                      AND DATE(subscription_end) <= $1
+                """, target_date)
+            else:
+                # Истекает ровно через X дней
+                target_date = now + timedelta(days=days_left)
+                rows = await conn.fetch("""
+                    SELECT id, name_internal, name_russian, subscription_status, subscription_end
+                    FROM companies
+                    WHERE subscription_status IN ('active', 'trial') 
+                      AND DATE(subscription_end) = $1
+                """, target_date)
+            
+            return [dict(r) for r in rows]
+
     async def duplicate_company_products(self, source_company_id: int, target_company_id: int) -> int:
         """Копирует все активные товары от одной компании (шаблона) к другой"""
         async with self.pool.acquire() as conn:
