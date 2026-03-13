@@ -846,7 +846,7 @@ class DatabasePG:
         """Получить товары в заявке"""
         async with self.pool.acquire() as conn:
             rows = await conn.fetch("""
-                SELECT i.*, p.name_internal, p.name_russian 
+                SELECT i.*, p.name_internal, p.name_russian, p.package_weight, p.unit
                 FROM pending_stock_items i
                 JOIN products p ON i.product_id = p.id
                 WHERE i.submission_id = $1
