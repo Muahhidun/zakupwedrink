@@ -1,18 +1,26 @@
 import asyncio
-import asyncpg
 import os
+import asyncpg
+from datetime import datetime, time
+from dotenv import load_dotenv
+
+load_dotenv()
 
 async def main():
-    db_url = os.getenv('DATABASE_URL', 'postgresql://zakupwedrink:zakupwedrink123@localhost:5432/zakupwedrink')
-    db_url = db_url.replace("localhost", "127.0.0.1")
-    try:
-        conn = await asyncpg.connect(db_url)
-        users = await conn.fetch("SELECT id, username, first_name, role FROM users LIMIT 10")
-        for u in users:
-            print(dict(u))
-        await conn.close()
-    except Exception as e:
-        print(f"Error: {e}")
+    pool = await asyncpg.create_pool(
+        dsn=os.getenv('DATABASE_URL')
+    )
+    
+    async with pool.acquire() as conn:
+        for m in range(0, 60, 5):
+            target_time = time(11, m)
+            rows = await conn.fetch("""
+                SELECT '12:00'::time >= $1::time + interval '59 minutes' 
+                       AND '12:00'::time <= $1::time + interval '61 minutes' as matches
+            """, target_time)
+            print(f"Current time: 11:{m:02d}. matches 12:00 shift?", dict(rows[0])['matches'])
+                    
+    await pool.close()
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     asyncio.run(main())

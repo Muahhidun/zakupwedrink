@@ -1,38 +1,35 @@
 import asyncio
-import asyncpg
-import json
+import os
+from datetime import datetime
+from zoneinfo import ZoneInfo
+from database_pg import DatabasePG
 
-async def run():
-    # Use the public proxy URL from earlier context for testing
-    conn = await asyncpg.connect("postgresql://postgres:pnqmXzGSWnQVgSsdMUxQKmEcffPBmyLB@tramway.proxy.rlwy.net:34608/railway")
-    rows = await conn.fetch("SELECT id, name_russian, is_active FROM products WHERE company_id = 1")
-    print(f"Total products: {len(rows)}")
-    active = [r['name_russian'] for r in rows if r['is_active']]
-    inactive = [r['name_russian'] for r in rows if not r['is_active']]
-    print(f"Active count: {len(active)}")
-    print(f"Inactive count: {len(inactive)}")
-    print(f"Inactive products: {inactive[:10]}")
+async def main():
+    db = DatabasePG(os.getenv('DATABASE_URL'))
+    await db.init_db()
     
-    rows2 = await conn.fetch("SELECT count(*) FROM stock WHERE company_id = 1")
-    print(f"Total stock records: {rows2[0]['count']}")
+    current_datetime = datetime.now(ZoneInfo("Asia/Almaty"))
+    target_date = current_datetime.date()
+    target_time = current_datetime.replace(second=0, microsecond=0).time()
     
-    # Get latest stock
-    rows3 = await conn.fetch("""
-        WITH RankedStock AS (
-            SELECT product_id, quantity, weight, date,
-                   ROW_NUMBER() OVER(PARTITION BY product_id ORDER BY date DESC) as rn
-            FROM stock
-            WHERE company_id = 1
-        )
-        SELECT p.name_russian, rs.quantity, rs.weight, rs.date 
-        FROM RankedStock rs
-        JOIN products p ON rs.product_id = p.id
-        WHERE rs.rn = 1 AND p.is_active = TRUE
-    """)
-    print(f"\nLatest active stock items: {len(rows3)}")
-    for r in rows3[:5]:
-        print(r['name_russian'], r['quantity'], r['date'])
+    print(f"Current Almaty time: {current_datetime}")
+    print(f"Target time: {target_time}")
+    
+    async with db.pool.acquire() as conn:
+        rows = await conn.fetch("""
+            SELECT u.id, s.start_time, $2::time as param_time, 
+                   $2::time + interval '59 minutes' as min_time,
+                   $2::time + interval '61 minutes' as max_time
+            FROM users u
+            JOIN shifts s ON u.id = s.user_id
+            WHERE u.is_active = TRUE AND s.date = $1
+        """, target_date, target_time)
         
-    await conn.close()
+        print("\nAll shifts for today:")
+        for r in rows:
+            print(dict(r))
+            
+    await db.close()
 
-asyncio.run(run())
+if __name__ == '__main__':
+    asyncio.run(main())
