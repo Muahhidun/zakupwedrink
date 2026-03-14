@@ -35,22 +35,19 @@ async def cmd_start(message: Message, db, user_role: str, is_admin: bool):
             target_role = invite_data.get('r', 'employee')
             
             if target_company_id:
-                # Проверяем не был ли пользователь удален из этой компании
-                user_info = await db.get_user_info(message.from_user.id)
-                if user_info and user_info.get('company_id') == target_company_id and user_info.get('is_active') == False:
-                    # Пользователь был удален, но перешел по новому инвайту. Восстанавливаем.
-                    await db.restore_user(message.from_user.id, target_company_id)
-                else:
-                    # Регистрируем пользователя сразу в нужной компании
-                    await db.add_or_update_user(
-                        user_id=message.from_user.id,
-                        username=message.from_user.username,
-                        first_name=message.from_user.first_name,
-                        last_name=message.from_user.last_name,
-                        company_id=target_company_id
-                    )
+                # Всегда обновляем/добавляем данные пользователя и привязываем к новой компании
+                await db.add_or_update_user(
+                    user_id=message.from_user.id,
+                    username=message.from_user.username,
+                    first_name=message.from_user.first_name,
+                    last_name=message.from_user.last_name,
+                    company_id=target_company_id
+                )
                 
-                # Обновляем роль согласно инвайту (также обновит роль восстановленному пользователю)
+                # Принудительно делаем его активным (на случай если он был удален из старой или этой же компании)
+                await db.restore_user(message.from_user.id, target_company_id)
+                
+                # Обновляем роль согласно инвайту
                 await db.update_user_role(message.from_user.id, target_role)
                 
                 # Если это первый админ, копируем ему глобальные товары
