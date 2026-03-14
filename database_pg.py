@@ -1068,7 +1068,31 @@ class DatabasePG:
                     VALUES ($1, $2, $3, $4, $5, $6)
                 """, company_id, debt['product_id'], today, debt['boxes'], debt['weight'], debt['cost'])
 
-                # 2. Обновляем статус долга
+                # 2. Обновляем склад (stock)
+                prev = await conn.fetchrow("""
+                    SELECT date, quantity, weight FROM stock 
+                    WHERE company_id = $1 AND product_id = $2 AND date <= $3 
+                    ORDER BY date DESC LIMIT 1
+                """, company_id, debt['product_id'], today)
+
+                if prev and prev['date'] == today:
+                    new_q = prev['quantity'] + debt['boxes']
+                    new_w = prev['weight'] + debt['weight']
+                    await conn.execute("""
+                        UPDATE stock SET quantity=$1, weight=$2 
+                        WHERE company_id=$3 AND product_id=$4 AND date=$5
+                    """, new_q, new_w, company_id, debt['product_id'], today)
+                else:
+                    base_q = prev['quantity'] if prev else 0
+                    base_w = prev['weight'] if prev else 0
+                    new_q = base_q + debt['boxes']
+                    new_w = base_w + debt['weight']
+                    await conn.execute("""
+                        INSERT INTO stock (company_id, product_id, date, quantity, weight)
+                        VALUES ($1, $2, $3, $4, $5)
+                    """, company_id, debt['product_id'], today, new_q, new_w)
+
+                # 3. Обновляем статус долга
                 await conn.execute("""
                     UPDATE supplier_debts 
                     SET status = 'resolved', resolved_at = CURRENT_TIMESTAMP 
