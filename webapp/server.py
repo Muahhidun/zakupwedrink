@@ -278,22 +278,27 @@ async def webapp_auto_login(request):
         return safe_json_response({'error': 'No initData provided'}, status=400)
 
     bot_token = os.getenv('BOT_TOKEN')
-    tg_user = verify_telegram_webapp(init_data, bot_token)
+    tg_result = verify_telegram_webapp(init_data, bot_token)
     
-    if not tg_user:
-        print("❌ webapp_auto_login: Invalid initData")
-        return safe_json_response({'error': 'Invalid initData'}, status=403)
+    if isinstance(tg_result, str):
+        import sys
+        print(f"❌ webapp_auto_login: {tg_result}", file=sys.stderr)
+        return safe_json_response({'error': tg_result}, status=403)
         
+    tg_user = tg_result
     user_id = tg_user.get('id')
     user_info = await db.get_user_info(user_id)
     
     if not user_info:
-        print(f"❌ webapp_auto_login: User {user_id} not found in database")
+        import sys
+        print(f"❌ webapp_auto_login: User {user_id} not found in database", file=sys.stderr)
         return safe_json_response({'error': 'User not found or no company assigned'}, status=403)
         
-    if not user_info.get('is_active', True):
-        print(f"❌ webapp_auto_login: User {user_id} is marked as inactive")
-        return safe_json_response({'error': 'User is inactive'}, status=403)
+    # Мы УБИРАЕМ проверку на is_active == False, потому что если пользователь 
+    # переходит по ссылке-приглашению (старый неактивный сотрудник), 
+    # ему нужно сначала войти в систему (получить сессию), 
+    # чтобы потом обработать /staff?invite=...
+    # Если мы его заблокируем тут, он никогда не сможет принять инвайт.
         
     # Устанавливаем cookie сессию!
     session = await aiohttp_session.get_session(request)
