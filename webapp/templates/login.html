@@ -153,6 +153,17 @@
                                 document.getElementById('loading-container').style.display = 'none';
                                 document.getElementById('login-widget-container').style.display = 'flex';
                                 console.error('Auto login failed:', result.error);
+                                
+                                // Show exact reason on screen so user can screenshot
+                                const errDiv = document.createElement('div');
+                                errDiv.style.backgroundColor = '#F8D7DA';
+                                errDiv.style.color = '#721C24';
+                                errDiv.style.padding = '10px';
+                                errDiv.style.borderRadius = '8px';
+                                errDiv.style.marginTop = '15px';
+                                errDiv.style.fontSize = '13px';
+                                errDiv.innerHTML = '<b>Ошибка авто-входа:</b><br>' + result.error;
+                                document.querySelector('.login-card').appendChild(errDiv);
                             }
                         } else {
                             throw new Error('Server returned ' + response.status);
