@@ -139,11 +139,13 @@ worker: python main.py
 
 ## 🔧 Структура проекта
 
+*Для деталей о логике SaaS подписок, расчете остатков и мульти-арендности (Multi-Tenancy) читайте [ARCHITECTURE.md](ARCHITECTURE.md).*
+
 ```
 wedrink-bot/
 ├── main.py              # Основной файл бота
-├── database.py          # Работа с БД
-├── scheduler.py         # Планировщик задач (напоминания)
+├── database_pg.py       # Работа с PostgreSQL (SaaS)
+├── scheduler.py         # Планировщик задач (ремайндеры, подписки)
 ├── import_data.py       # Импорт из CSV
 ├── handlers/            # Обработчики команд
 │   ├── start.py
