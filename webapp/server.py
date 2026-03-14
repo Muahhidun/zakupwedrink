@@ -1591,6 +1591,42 @@ def create_app():
     app.router.add_get('/api/debts', api_get_debts)
     app.router.add_post('/api/debts/{id}/resolve', api_resolve_debt)
 
+async def api_generate_invite_for_company(request):
+    """Сгенерировать инвайт для уже существующей компании (только superadmin)"""
+    try:
+        user = await get_current_user(request)
+        if not user or user.get('role') != 'superadmin':
+            return safe_json_response({'error': 'Доступ запрещен'}, status=403)
+            
+        company_id = int(request.match_info['id'])
+        
+        # Получаем данные из тела (опционально роль)
+        try:
+            data = await request.json()
+            role = data.get('role', 'admin')
+        except:
+            role = 'admin'
+
+        import base64
+        import json
+        from datetime import datetime
+        invite_data = json.dumps({'c': company_id, 'r': role, 't': int(datetime.now().timestamp())})
+        invite_token = base64.urlsafe_b64encode(invite_data.encode()).decode().rstrip('=')
+        
+        bot_username = os.getenv('BOT_USERNAME', 'Zakupformbot')
+        invite_url = f"https://t.me/{bot_username}?start=invite_{invite_token}"
+
+        return safe_json_response({
+            'success': True,
+            'invite_url': invite_url
+        })
+    except ValueError:
+        return safe_json_response({'error': 'Неверный ID компании'}, status=400)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return safe_json_response({'error': str(e)}, status=500)
+
     # API Дашборд Заметки
     app.router.add_get('/api/dashboard/notes', api_get_dashboard_notes)
     app.router.add_post('/api/dashboard/notes', api_add_dashboard_note)
@@ -1612,6 +1648,7 @@ def create_app():
 
     app.router.add_get('/superadmin', superadmin_page)
     app.router.add_post('/api/superadmin/companies', api_create_company)
+    app.router.add_post('/api/superadmin/companies/{id}/invite', api_generate_invite_for_company)
     app.router.add_post('/api/superadmin/companies/{id}/subscription', api_update_company_subscription)
     app.router.add_post('/api/superadmin/products', api_add_superadmin_product)
     app.router.add_delete('/api/superadmin/companies/{id}', api_delete_company)

@@ -387,8 +387,24 @@
         alert("Ссылка скопирована!");
     }
 
-    function generateInvite(companyId, role) {
-        alert('Функция генерации инвайта для существующей компании в разработке.');
+    async function generateInvite(companyId, role) {
+        try {
+            const response = await fetch(`/api/superadmin/companies/${companyId}/invite`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ role: role })
+            });
+
+            const data = await response.json();
+            if (response.ok && data.success) {
+                prompt("Ссылка для приглашения сгенерирована. Скопируйте её ниже:", data.invite_url);
+            } else {
+                alert('Ошибка: ' + (data.error || 'Неизвестная ошибка'));
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Сетевая ошибка при генерации инвайта');
+        }
     }
 
     // --- Settings Modal Logic ---
