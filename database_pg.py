@@ -157,6 +157,7 @@ class DatabasePG:
                     start_time TIME,
                     end_time TIME,
                     status VARCHAR(50) DEFAULT 'assigned',
+                    is_notified BOOLEAN DEFAULT FALSE,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
@@ -171,9 +172,16 @@ class DatabasePG:
                     start_time TIME,
                     end_time TIME,
                     status VARCHAR(50) DEFAULT 'assigned',
+                    is_notified BOOLEAN DEFAULT FALSE,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+            
+            # Добавляем колонку к существующей таблице, если она есть
+            try:
+                await conn.execute("ALTER TABLE shifts ADD COLUMN IF NOT EXISTS is_notified BOOLEAN DEFAULT FALSE;")
+            except Exception as e:
+                pass
 
             # 11. Supplier Debts (Missing items from deliveries)
             await conn.execute("""
@@ -1472,19 +1480,28 @@ class DatabasePG:
         target_date = current_datetime.date()
         target_time = current_datetime.replace(second=0, microsecond=0).time()
         
-        # Мы ищем смены, где start_time равен target_time + 1 час.
-        # Планировщик дергает эту функцию каждые 5 минут. Нам нужно "поймать" смену
-        # ровно за 60 минут до начала (плюс/минус 1 минута на погрешность запуска).
+        # Мы используем атомарный UPDATE ... RETURNING, чтобы даже при 
+        # повторных запусках планировщика в одно и то же время, 
+        # смена отмечалась как 'уведомленная' и больше не возвращалась.
         
         async with self.pool.acquire() as conn:
             rows = await conn.fetch("""
-                SELECT u.id, u.company_id, u.first_name, u.last_name, s.start_time
-                FROM users u
-                JOIN shifts s ON u.id = s.user_id
-                WHERE u.is_active = TRUE 
-                  AND s.date = $1 
-                  AND s.start_time >= $2::time + interval '59 minutes'
-                  AND s.start_time <= $2::time + interval '61 minutes'
+                UPDATE shifts 
+                SET is_notified = TRUE
+                WHERE id IN (
+                    SELECT s.id
+                    FROM shifts s
+                    JOIN users u ON u.id = s.user_id
+                    WHERE u.is_active = TRUE 
+                      AND s.date = $1 
+                      AND s.is_notified = FALSE
+                      AND s.start_time >= $2::time + interval '55 minutes'
+                      AND s.start_time <= $2::time + interval '65 minutes'
+                )
+                RETURNING user_id AS id, company_id, 
+                          (SELECT first_name FROM users WHERE id = shifts.user_id) AS first_name,
+                          (SELECT last_name FROM users WHERE id = shifts.user_id) AS last_name,
+                          start_time
             """, target_date, target_time)
             
             return [dict(row) for row in rows]
