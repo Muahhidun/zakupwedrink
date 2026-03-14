@@ -32,13 +32,33 @@ window.fetch = async function () {
 };
 
 document.addEventListener('DOMContentLoaded', () => {
-    initApp();
+    // Slight delay to ensure Telegram WebApp JS is fully initialized, especially on iOS Safari
+    setTimeout(() => {
+        initApp();
+    }, 150);
 });
 
 async function initApp() {
     setupSidebar();
 
     try {
+        // Automatically attempt to login via Telegram WebApp data if available
+        if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData) {
+            try {
+                const authRes = await fetch('/api/auth/webapp_auto', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'x-telegram-init-data': window.Telegram.WebApp.initData
+                    },
+                    body: JSON.stringify({ init_data: window.Telegram.WebApp.initData })
+                });
+                // We don't strictly care if it fails here, `/api/user/me` will catch auth failures next
+            } catch (e) {
+                console.error('Auto login attempt failed:', e);
+            }
+        }
+
         // Fetch current user details
         const response = await fetch('/api/user/me');
         if (!response.ok) {
