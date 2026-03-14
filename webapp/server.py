@@ -281,15 +281,18 @@ async def webapp_auto_login(request):
     tg_user = verify_telegram_webapp(init_data, bot_token)
     
     if not tg_user:
+        print("❌ webapp_auto_login: Invalid initData")
         return safe_json_response({'error': 'Invalid initData'}, status=403)
         
     user_id = tg_user.get('id')
     user_info = await db.get_user_info(user_id)
     
     if not user_info:
+        print(f"❌ webapp_auto_login: User {user_id} not found in database")
         return safe_json_response({'error': 'User not found or no company assigned'}, status=403)
         
     if not user_info.get('is_active', True):
+        print(f"❌ webapp_auto_login: User {user_id} is marked as inactive")
         return safe_json_response({'error': 'User is inactive'}, status=403)
         
     # Устанавливаем cookie сессию!
