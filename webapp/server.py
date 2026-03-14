@@ -120,9 +120,10 @@ async def get_current_user(request):
                 role = user_info.get('role') if user_info else 'user'
                 company_id = user_info.get('company_id') if user_info else None
                 
-                if user_info and not user_info.get('is_active', True):
-                    return None
-                    
+                # Мы больше не блокируем неактивных в get_current_user,
+                # чтобы дать им возможность принять новые инвайты. Проверка в auth_middleware.
+                
+
                 user_dict = {
                     'id': user_id,
                     'username': tg_user.get('username'),
@@ -145,10 +146,9 @@ async def get_current_user(request):
         user_data = session['user']
         # Всегда перепроверяем статус активности в БД для безопасности
         user_info = await db.get_user_info(user_data['id'])
-        if user_info and not user_info.get('is_active', True):
-            session.invalidate()
-            return None
-            
+        # Мы больше не инвалидируем сессию, статусы активности проверятся в auth_middleware
+        
+
         # Обновляем роль и компанию на случай если их изменили
         if user_info:
             user_data['role'] = user_info.get('role', user_data.get('role', 'user'))
@@ -193,17 +193,30 @@ async def auth_middleware(request, handler):
             # Для HTML страниц мы не делаем серверный редирект, чтобы Mini App мог загрузить скрипт авторизации.
             # На стороне клиента app.js проверит /api/user/me и сделает редирект если нужно.
         else:
-            # Check company subscription status
-            company_id = user.get('company_id')
-            if company_id and company_id != 1 and not request.path.startswith('/superadmin'):
-                async with db.pool.acquire() as conn:
-                    status = await conn.fetchval("SELECT subscription_status FROM companies WHERE id = $1", company_id)
+            # Проверяем статус активности пользователя
+            if not user.get('is_active', True):
+                # Разрешенные пути для неактивных пользователей (инвайты, получение своей роли)
+                inactive_allowed = ['/api/user/me', '/api/company/invite', '/staff']
+                is_allowed = any(request.path.startswith(p) for p in inactive_allowed) or request.path == '/inactive'
                 
-                if status == 'expired' and request.path != '/expired':
+                if not is_allowed:
                     if request.path.startswith('/api/'):
-                        return safe_json_response({'error': 'Subscription expired'}, status=403)
-                    elif request.path.startswith('/dashboard') or request.path == '/' or request.path.startswith('/manager'):
-                        raise web.HTTPFound('/expired')
+                        return safe_json_response({'error': 'User is inactive'}, status=403)
+                    # Если попытались зайти на / (dashboard) - отдать страницу 403 или просто ничего
+                    # Оставим на совести фронтенда, он должен нарисовать "вы неактивны"
+                    # Но на практике лучше не редиректить, иначе зациклится
+            else:
+                # Check company subscription status (только для активных)
+                company_id = user.get('company_id')
+                if company_id and company_id != 1 and not request.path.startswith('/superadmin'):
+                    async with db.pool.acquire() as conn:
+                        status = await conn.fetchval("SELECT subscription_status FROM companies WHERE id = $1", company_id)
+                    
+                    if status == 'expired' and request.path != '/expired':
+                        if request.path.startswith('/api/'):
+                            return safe_json_response({'error': 'Subscription expired'}, status=403)
+                        elif request.path.startswith('/dashboard') or request.path == '/' or request.path.startswith('/manager'):
+                            raise web.HTTPFound('/expired')
                 
     return await handler(request)
 
