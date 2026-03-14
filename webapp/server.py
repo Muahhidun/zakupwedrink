@@ -751,8 +751,13 @@ async def save_supply(request):
             if boxes > 0 or weight > 0:
                 await db.add_supply(company_id, product_id, date_str, int(boxes), weight, cost)
                 
-                # Обновляем текущий остаток склада на количество прихода
-                await db.increment_stock(company_id, product_id, date_str, float(boxes), weight)
+                # Обновляем текущий остаток склада на количество упаковок, а не коробок!
+                async with db.pool.acquire() as conn:
+                    prod = await conn.fetchrow("SELECT units_per_box FROM products WHERE id = $1", product_id)
+                    upb = prod['units_per_box'] if prod else 1
+                packages = boxes * upb
+                
+                await db.increment_stock(company_id, product_id, date_str, float(packages), weight)
                 
                 # Обновляем ценник товара в базе, если мы указали количество и стоимость
                 if boxes > 0 and cost > 0:

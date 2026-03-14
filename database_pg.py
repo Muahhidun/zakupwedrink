@@ -1062,6 +1062,11 @@ class DatabasePG:
                 from datetime import date
                 today = date.today()
 
+                # Fetch product to get units_per_box
+                prod = await conn.fetchrow("SELECT units_per_box FROM products WHERE id = $1", debt['product_id'])
+                upb = prod['units_per_box'] if prod else 1
+                packages = float(debt['boxes']) * upb
+
                 # 1. Добавляем в приход (supplies)
                 await conn.execute("""
                     INSERT INTO supplies (company_id, product_id, date, boxes, weight, cost)
@@ -1076,7 +1081,7 @@ class DatabasePG:
                 """, company_id, debt['product_id'], today)
 
                 if prev and prev['date'] == today:
-                    new_q = prev['quantity'] + debt['boxes']
+                    new_q = prev['quantity'] + packages
                     new_w = prev['weight'] + debt['weight']
                     await conn.execute("""
                         UPDATE stock SET quantity=$1, weight=$2 
@@ -1085,7 +1090,7 @@ class DatabasePG:
                 else:
                     base_q = prev['quantity'] if prev else 0
                     base_w = prev['weight'] if prev else 0
-                    new_q = base_q + debt['boxes']
+                    new_q = base_q + packages
                     new_w = base_w + debt['weight']
                     await conn.execute("""
                         INSERT INTO stock (company_id, product_id, date, quantity, weight)
@@ -1446,7 +1451,7 @@ class DatabasePG:
             result = await conn.execute("""
                 UPDATE companies 
                 SET subscription_status = 'expired'
-                WHERE subscription_end < $1 AND subscription_status IN ('active', 'trial')
+                WHERE subscription_end_date < $1 AND subscription_status IN ('active', 'trial')
             """, now)
             
             # Вернуть количество обновленных строк ('UPDATE 5' -> 5)
@@ -1467,10 +1472,10 @@ class DatabasePG:
                 # Истекает сегодня или уже истекла, но статус еще не обновился
                 target_date = now
                 rows = await conn.fetch("""
-                    SELECT id, name_internal, name_russian, subscription_status, subscription_end
+                    SELECT id, name_internal, name_russian, subscription_status, subscription_end_date
                     FROM companies
                     WHERE subscription_status IN ('active', 'trial') 
-                      AND DATE(subscription_end) <= $1
+                      AND DATE(subscription_end_date) <= $1
                 """, target_date)
             else:
                 # Истекает ровно через X дней

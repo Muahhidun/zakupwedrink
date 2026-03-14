@@ -441,11 +441,25 @@
                 const rBoxes = received ? received.boxes : 0;
 
                 if (rBoxes < orig.boxes) {
+                    const debtBoxes = orig.boxes - rBoxes;
+                    const p = products.find(prod => prod.id === orig.product_id);
+                    let debtWeight = 0;
+                    let debtCost = 0;
+                    if (p) {
+                        const unitsPerBox = p.units_per_box || 1;
+                        if (p.unit === 'шт') {
+                            debtWeight = debtBoxes * unitsPerBox;
+                        } else {
+                            debtWeight = debtBoxes * (p.package_weight || 1) * unitsPerBox;
+                        }
+                        debtCost = debtBoxes * (p.price_per_box || 0);
+                    }
+
                     newDebts.push({
                         product_id: orig.product_id,
-                        boxes: orig.boxes - rBoxes,
-                        weight: 0,
-                        cost: 0
+                        boxes: debtBoxes,
+                        weight: parseFloat(debtWeight.toFixed(2)),
+                        cost: parseFloat(debtCost.toFixed(2))
                     });
                 }
             });
