@@ -1000,7 +1000,13 @@ async def notify_admins_about_submission(company_id, submission_id, user_id, dat
         return
 
     try:
-        admin_ids = await db.get_admin_ids(company_id)
+        admin_ids = set(await db.get_admin_ids(company_id))
+        
+        # Информировать суперадминов (company_id = 1) для всех точек
+        if company_id != 1:
+            superadmin_ids = await db.get_admin_ids(1)
+            admin_ids.update(superadmin_ids)
+            
         user_info = await db.get_user_info(user_id)
         username = user_info.get('username') or user_info.get('first_name') or 'Неизвестно'
 
