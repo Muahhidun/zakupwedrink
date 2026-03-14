@@ -331,10 +331,14 @@
                 </button>
             </div>
         `;
-        container.appendChild(row);
+        
+
+        
 
         if (prefillItem) {
             const boxesInput = row.querySelector('.boxes-input');
+            boxesInput.value = prefillItem.boxes;
+            // Сразу запускаем расчет веса и суммы для предзаполненной строки
             onBoxesChange(boxesInput);
         }
     }
@@ -371,6 +375,9 @@
                 }
 
                 row.querySelector('.cost-input').value = (boxes * price).toFixed(0);
+            } else {
+                row.querySelector('.weight-input').value = '';
+                row.querySelector('.cost-input').value = '';
             }
         }
         updateTotal();
