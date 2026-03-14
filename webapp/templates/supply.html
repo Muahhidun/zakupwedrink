@@ -373,8 +373,8 @@
                     // Если товар в штуках, количество в базу заносится в штуках
                     row.querySelector('.weight-input').value = (boxes * unitsPerBox).toFixed(0);
                 } else {
-                    // Иначе обычные килограммы или литры
-                    row.querySelector('.weight-input').value = (boxes * packageWeight).toFixed(1);
+                    // Иначе обычные килограммы или литры (вес 1 шт * кол-во в коробке * кол-во коробок)
+                    row.querySelector('.weight-input').value = (boxes * packageWeight * unitsPerBox).toFixed(2);
                 }
 
                 row.querySelector('.cost-input').value = (boxes * price).toFixed(0);
