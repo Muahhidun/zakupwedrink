@@ -279,7 +279,7 @@
 
     function editPendingOrder(order) {
         currentPendingOrderId = order.id;
-        originalPendingItems = order.items.map(i => ({ product_id: i.product_id, boxes: parseFloat(i.boxes || 0) }));
+        originalPendingItems = order.items.map(i => ({ product_id: i.product_id, boxes: parseFloat(i.boxes_ordered || i.boxes || 0) }));
 
         document.getElementById('supplyItems').innerHTML = '';
         rowCounter = 0;
@@ -289,7 +289,9 @@
 
         if (order.items && order.items.length > 0) {
             order.items.forEach(item => {
-                addRow(item);
+                // The item object from API usually holds the quantity in `boxes_ordered`
+                const formattedItem = { product_id: item.product_id, boxes: parseFloat(item.boxes_ordered || item.boxes || 0) };
+                addRow(formattedItem);
             });
         } else {
             addRow();
