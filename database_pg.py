@@ -300,6 +300,40 @@ class DatabasePG:
                 DO UPDATE SET quantity=EXCLUDED.quantity, weight=EXCLUDED.weight
             """, company_id, product_id, date, quantity, weight)
 
+    async def increment_stock(self, company_id: int, product_id: int, date, add_boxes: float, add_weight: float):
+        """Увеличить (или создать) текущий остаток приходами/поставками (авто-обновление склада)"""
+        if isinstance(date, str):
+            from datetime import datetime
+            date = datetime.strptime(date, '%Y-%m-%d').date()
+
+        async with self.pool.acquire() as conn:
+            # Ищем самую свежую запись по складу
+            prev = await conn.fetchrow("""
+                SELECT date, quantity, weight FROM stock 
+                WHERE company_id = $1 AND product_id = $2 AND date <= $3 
+                ORDER BY date DESC LIMIT 1
+            """, company_id, product_id, date)
+
+            if prev and prev['date'] == date:
+                # Если уже есть запись на СЕГОДНЯ, просто прибавляем к ней
+                new_q = prev['quantity'] + add_boxes
+                new_w = prev['weight'] + add_weight
+                await conn.execute("""
+                    UPDATE stock SET quantity=$1, weight=$2 
+                    WHERE company_id=$3 AND product_id=$4 AND date=$5
+                """, new_q, new_w, company_id, product_id, date)
+            else:
+                # Если записи на сегодня нет (или вообще нет), берем предыдущий остаток (если есть)
+                base_q = prev['quantity'] if prev else 0
+                base_w = prev['weight'] if prev else 0
+                new_q = base_q + add_boxes
+                new_w = base_w + add_weight
+                await conn.execute("""
+                    INSERT INTO stock (company_id, product_id, date, quantity, weight)
+                    VALUES ($1, $2, $3, $4, $5)
+                """, company_id, product_id, date, new_q, new_w)
+
+
     async def add_supply(self, company_id: int, product_id: int, date, boxes: int,
                         weight: float, cost: float):
         """Добавить поставку"""
