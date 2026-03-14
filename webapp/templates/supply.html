@@ -220,9 +220,14 @@
                             <div style="font-weight: 600;">${d.name_russian}</div>
                             <div style="font-size: 12px; color: var(--text-secondary);">${d.boxes} уп. с ${d.created_at.split(' ')[0]}</div>
                         </div>
-                        <button class="btn btn-sm btn-outline" style="color: var(--success); border-color: var(--success);" onclick="resolveDebt(${d.id})">
-                            Привезено
-                        </button>
+                        <div style="display: flex; gap: 8px;">
+                            <button class="btn btn-sm btn-outline" style="color: var(--danger); border-color: var(--danger);" onclick="cancelDebt(${d.id})">
+                                Отмена
+                            </button>
+                            <button class="btn btn-sm btn-outline" style="color: var(--success); border-color: var(--success);" onclick="resolveDebt(${d.id})">
+                                Привезено
+                            </button>
+                        </div>
                     </div>
                 `).join('');
             } else {
@@ -232,12 +237,21 @@
     }
 
     async function resolveDebt(id) {
-        if (!confirm("Уверены, что поставщик привез этот долг? Товар НЕ будет автоматически добавлен на склад.")) return;
+        if (!confirm("Уверены, что поставщик привез этот долг?\nТовар будет отправлен в Историю и автоматически ПРИБАВЛЕН к текущим остаткам на складе.")) return;
         try {
             await fetch(`/api/debts/${id}/resolve`, { method: 'POST' });
             fetchDebts();
         } catch (e) { console.error(e); }
     }
+
+    async function cancelDebt(id) {
+        if (!confirm("Отменить этот долг? (Он просто удалится из списка без добавления на склад)")) return;
+        try {
+            await fetch(`/api/debts/${id}/cancel`, { method: 'POST' });
+            fetchDebts();
+        } catch (e) { console.error(e); }
+    }
+
 
     async function fetchPendingOrders() {
         try {

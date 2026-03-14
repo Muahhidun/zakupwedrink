@@ -1543,6 +1543,17 @@ async def api_resolve_debt(request):
     except Exception as e:
         return safe_json_response({'error': str(e)}, status=500)
 
+async def api_cancel_debt(request):
+    """API: Отменить долг (товар так и не привезли, списание без прихода)"""
+    user = await get_current_user(request)
+    if not user: return safe_json_response({'error': 'Unauthorized'}, status=401)
+    try:
+        debt_id = int(request.match_info.get('id'))
+        await db.cancel_supplier_debt(debt_id)
+        return safe_json_response({'success': True})
+    except Exception as e:
+        return safe_json_response({'error': str(e)}, status=500)
+
 def create_app():
     """Создать приложение aiohttp"""
     app = web.Application()
@@ -1593,6 +1604,7 @@ def create_app():
     app.router.add_post('/api/pending_orders/{id}/cancel', api_cancel_pending_order)
     app.router.add_get('/api/debts', api_get_debts)
     app.router.add_post('/api/debts/{id}/resolve', api_resolve_debt)
+    app.router.add_post('/api/debts/{id}/cancel', api_cancel_debt)
 
     # API Дашборд Заметки
     app.router.add_get('/api/dashboard/notes', api_get_dashboard_notes)

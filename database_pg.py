@@ -1099,6 +1099,15 @@ class DatabasePG:
                     WHERE id = $1
                 """, debt_id)
 
+    async def cancel_supplier_debt(self, debt_id: int):
+        """Отменить долг поставщика (товар так и не привезли, долг списан без прихода)"""
+        async with self.pool.acquire() as conn:
+            await conn.execute("""
+                UPDATE supplier_debts 
+                SET status = 'cancelled', resolved_at = CURRENT_TIMESTAMP 
+                WHERE id = $1
+            """, debt_id)
+
     async def get_all_pending_weights(self, company_id: int) -> Dict[int, float]:
         """Получить вес в пути (pending orders) для всех товаров компани"""
         async with self.pool.acquire() as conn:
