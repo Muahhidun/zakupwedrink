@@ -186,21 +186,20 @@ async def check_and_send_reminder(bot: Bot, reminder_type: str):
                 except Exception as e:
                     logger.error(f"❌ Ошибка отправки пользователю {user_id}: {e}")
                     
-            # Дублируем уведомление администраторам франшизы (кроме утреннего, чтобы не спамить)
-            if reminder_type != 'morning':
-                admin_ids = await db.get_admins_for_company(company_id)
-                for admin_id in admin_ids:
-                    if admin_id not in user_ids: # не отправляем дважды, если админ на смене
-                        try:
-                            admin_msg = f"⚠️ <b>Внимание (Контроль)!</b>\n\nСотрудники еще не внесли остатки!\n\n" + message
-                            await bot.send_message(
-                                chat_id=admin_id,
-                                text=admin_msg,
-                                parse_mode="HTML",
-                                reply_markup=keyboard
-                            )
-                        except Exception as e:
-                            logger.error(f"❌ Ошибка CC админу {admin_id}: {e}")
+            # Дублируем уведомление администраторам франшизы (для контроля)
+            admin_ids = await db.get_admins_for_company(company_id)
+            for admin_id in admin_ids:
+                if admin_id not in user_ids: # не отправляем дважды, если админ на смене
+                    try:
+                        admin_msg = f"⚠️ <b>Внимание (Контроль)!</b>\n\nСотрудники получили напоминание о вводе остатков!\n\n" + message
+                        await bot.send_message(
+                            chat_id=admin_id,
+                            text=admin_msg,
+                            parse_mode="HTML",
+                            reply_markup=keyboard
+                        )
+                    except Exception as e:
+                        logger.error(f"❌ Ошибка CC админу {admin_id}: {e}")
 
             logger.info(f"✅ Компания {company_id}: Напоминание ({reminder_type}) отправлено {success_count}/{len(user_ids)} пользователям")
 
@@ -251,6 +250,25 @@ async def check_and_send_shift_reminder(bot: Bot):
                 success_count += 1
             except Exception as e:
                 logger.error(f"❌ Ошибка отправки напоминания о смене пользователю {user_id}: {e}")
+                
+            # Копия администраторам для контроля
+            try:
+                company_id = data.get('company_id')
+                if company_id:
+                    first_name = data.get('first_name') or ''
+                    last_name = data.get('last_name') or ''
+                    employee_name = f"{first_name} {last_name}".strip() or "Сотрудник"
+                    
+                    admin_ids = await db.get_admins_for_company(company_id)
+                    admin_msg = f"👁‍🗨 <b>Контроль смен</b>\n\nСотруднику <b>{employee_name}</b> отправлено напоминание о начале смены в <b>{start_time_str}</b>."
+                    for admin_id in admin_ids:
+                        if admin_id != user_id:
+                            try:
+                                await bot.send_message(chat_id=admin_id, text=admin_msg, parse_mode="HTML")
+                            except Exception as e:
+                                logger.error(f"❌ Ошибка отправки CC админу {admin_id} о смене: {e}")
+            except Exception as e:
+                logger.error(f"❌ Ошибка при отправке CC о смене админам: {e}")
 
         if users_in_one_hour:
             logger.info(f"✅ Напоминание о предстоящей смене отправлено {success_count}/{len(users_in_one_hour)} пользователям")

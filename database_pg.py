@@ -1478,7 +1478,7 @@ class DatabasePG:
         
         async with self.pool.acquire() as conn:
             rows = await conn.fetch("""
-                SELECT u.id, s.start_time
+                SELECT u.id, u.company_id, u.first_name, u.last_name, s.start_time
                 FROM users u
                 JOIN shifts s ON u.id = s.user_id
                 WHERE u.is_active = TRUE 
